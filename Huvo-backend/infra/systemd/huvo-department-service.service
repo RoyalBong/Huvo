@@ -1,0 +1,19 @@
+[Unit]
+Description=Huvo Department Service (interim - folds into identity-service, Section 3.1)
+Documentation=https://github.com/RoyalBong/Employee-Management-System-Project
+After=network.target rabbitmq-server.service
+
+[Service]
+Type=simple
+User=huvo
+EnvironmentFile=/etc/huvo/department-service.env
+# Heap is set explicitly per Section 8.3 - these are lightweight CRUD services,
+# so keep the JVM conservative rather than letting it auto-size against host RAM.
+ExecStart=/usr/bin/java -Xms256m -Xmx384m -jar /opt/huvo/department-service.jar
+Restart=on-failure
+RestartSec=5
+# JVM handles SIGTERM as a clean shutdown.
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

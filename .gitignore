@@ -1,0 +1,3 @@
+# The frontend is a separate repository (Huvo_Backend_Context.md, Section 0).
+# Keep it out of this backend repo; it has (or will have) its own git history.
+/Huvo-frontend/

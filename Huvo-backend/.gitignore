@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# Repo-level ignore rules.
+# Service-level .gitignore files in employee-service/ and department-service/
+# cover Maven/IDE output for those modules as well.
+# ---------------------------------------------------------------------------
+
+# --- build output ---
+target/
+**/target/
+*.jar
+!**/.mvn/wrapper/maven-wrapper.jar
+
+# --- application logs ---
+# Logs are written to stdout and captured by Docker - they must never be
+# committed (Huvo Backend_Context.md §8.1).
+*.log
+
+# --- secrets and local environment overrides (Sections 4.3, 8.1) ---
+.env
+*.env.local
+!.env.example
+# Per-service local overrides - never committed (Section 8.1).
+application-local.yml
+application-local.properties
+
+# --- toolchain downloaded for local build verification ---
+.tools/
+
+# --- IDE / editor state ---
+.metadata/
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.springBeans
+.sts4-cache
