@@ -10,6 +10,8 @@
 //     (or the CloudFormation stack output once that stack exists: Section 12, Phase 6).
 //   - AWS credentials on the agent (instance role / credential binding) allowing
 //     s3:PutObject on the artifacts bucket and ssm:SendCommand on the backend instance.
+//   - JDK 17, Maven 3.9+ and AWS CLI v2 installed on the Jenkins host/agent - there is
+//     no Docker anywhere, CI included (Sections 2 and 9).
 // TODO(phase-1): this service list changes when employee-service + department-service
 // are folded into identity-service (Section 3.1).
 
@@ -29,13 +31,12 @@ def runOnBackend(String comment, String commandsJson) {
 }
 
 pipeline {
-    agent {
-        // The build runner only. No service in this repo ships a Dockerfile, and
-        // nothing is deployed as a container (Section 9).
-        docker {
-            image 'shayandutta98/jenkins-agent:latest'
-        }
-    }
+    // No Docker anywhere, CI included (Sections 2 and 9). The pipeline runs on a plain
+    // Jenkins agent that provides JDK 17, Maven 3.9+ and AWS CLI v2 on PATH.
+    // If this Jenkins installs tools through Global Tool Configuration instead of PATH,
+    // add (names must match the configured tool names):
+    //     tools { jdk 'jdk17'; maven 'maven-3.9' }
+    agent any
 
     environment {
         AWS_DEFAULT_REGION  = 'ap-south-1'
@@ -48,6 +49,16 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 checkout scm
+            }
+        }
+
+        // Fails fast with a readable message when the agent is missing a required tool,
+        // instead of failing later inside a build or deploy step.
+        stage('Verify Toolchain') {
+            steps {
+                sh 'java -version'
+                sh 'mvn -v'
+                sh 'aws --version'
             }
         }
 
