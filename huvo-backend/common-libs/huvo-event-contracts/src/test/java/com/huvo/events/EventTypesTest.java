@@ -2,6 +2,8 @@ package com.huvo.events;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.OffsetDateTime;
+
 import org.junit.jupiter.api.Test;
 
 /**
@@ -69,13 +71,75 @@ class EventTypesTest {
 
   @Test
   void theLoginPayloadCarriesIdsAndRoleOnly() {
-    // The payload crosses a broker other services read from, so it must be ids - never
-    // credentials. Naming the fields is the reminder that no secret may be added here.
-    EventTypes.LoginPayload payload = new EventTypes.LoginPayload(1L, 2L, "MANAGER");
+    // The payload crosses a broker other services read from, so it must be ids and metadata -
+    // never credentials. Naming the fields is the reminder that no secret may be added here.
+    EventTypes.LoginPayload payload =
+        new EventTypes.LoginPayload(
+            1L, 2L, "MANAGER", OffsetDateTime.parse("2026-09-27T09:15:00+05:30"), "10.0.0.7");
 
     assertThat(payload.userId()).isEqualTo(1L);
     assertThat(payload.employeeId()).isEqualTo(2L);
     assertThat(payload.role()).isEqualTo("MANAGER");
+  }
+
+  /**
+   * Section 5.2 computes the lateness delta from {@code login_timestamp}, not from the envelope's
+   * {@code occurredAt} - which is stamped later, during token issuance and serialisation. Against a
+   * 15-minute grace period that lag would flip borderline logins, so the two must be
+   * distinguishable fields and the earlier one must be the one the engine reads.
+   */
+  @Test
+  void theLoginTimestampIsSeparateFromTheEnvelopeTimestamp() {
+    // Five minutes ago, so the assertion is about ordering rather than about the wall clock.
+    OffsetDateTime verifiedAt = OffsetDateTime.now().minusMinutes(5);
+
+    EventTypes.LoginPayload payload =
+        new EventTypes.LoginPayload(1L, 2L, "EMPLOYEE", verifiedAt, "10.0.0.7");
+    EventEnvelope<EventTypes.LoginPayload> envelope =
+        EventEnvelope.of(EventTypes.USER_LOGIN_SUCCESS, "identity-service", payload);
+
+    // The payload keeps the instant the password verified, unchanged and not overwritten by the
+    // envelope...
+    assertThat(payload.loginTimestamp()).isEqualTo(verifiedAt);
+    // ...while the envelope records when the event was built, which is strictly later. Deriving
+    // one from the other is the bug this guards: against a 15-minute grace period, a systematic
+    // lag would flip on-time logins to late.
+    assertThat(envelope.occurredAt()).isAfter(verifiedAt);
+  }
+
+  @Test
+  void theLoginPayloadSurvivesAnUnlinkedAccountAndAnUnknownClient() {
+    // A bootstrap or service account has no employee record, and a non-HTTP caller has no IP.
+    // Both are legitimate; neither should stop the engine from consuming the login.
+    EventTypes.LoginPayload payload =
+        new EventTypes.LoginPayload(1L, null, "ADMIN", OffsetDateTime.now(), null);
+
+    assertThat(payload.employeeId()).isNull();
+    assertThat(payload.sourceIp()).isNull();
+    assertThat(payload.loginTimestamp()).isNotNull();
+  }
+
+  @Test
+  void theLoginPayloadNeverCarriesCredentialsOrTokens() {
+    EventTypes.LoginPayload payload =
+        new EventTypes.LoginPayload(
+            1L, 2L, "EMPLOYEE", OffsetDateTime.parse("2026-09-27T09:15:00+05:30"), "10.0.0.7");
+
+    // A guard on the contract: a password or token field would end up readable by every
+    // service bound to the exchange, so this fails loudly if one is ever added.
+    var fieldNames =
+        java.util.Arrays.stream(EventTypes.LoginPayload.class.getRecordComponents())
+            .map(java.lang.reflect.RecordComponent::getName)
+            .toList();
+
+    assertThat(fieldNames)
+        .containsExactlyInAnyOrder("userId", "employeeId", "role", "loginTimestamp", "sourceIp");
+    assertThat(fieldNames)
+        .noneMatch(
+            name ->
+                name.toLowerCase(java.util.Locale.ROOT).contains("password")
+                    || name.toLowerCase(java.util.Locale.ROOT).contains("token")
+                    || name.toLowerCase(java.util.Locale.ROOT).contains("secret"));
   }
 
   /** Minimal AMQP topic matching: "#" is zero or more words, "*" is exactly one. */

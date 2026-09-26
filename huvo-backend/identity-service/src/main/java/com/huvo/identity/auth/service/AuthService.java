@@ -3,6 +3,7 @@ package com.huvo.identity.auth.service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.List;
 
@@ -67,16 +68,31 @@ public class AuthService {
     return true;
   }
 
-  /** Validates credentials and returns a fresh access + refresh token pair. */
-  public AuthResponse login(String username, String rawPassword) {
+  /**
+   * Validates credentials and returns a fresh access + refresh token pair.
+   *
+   * <p>The login instant is captured here, immediately after the password verifies and before any
+   * token work, and handed to the event. It must not be derived from the event envelope's {@code
+   * occurredAt}: that is stamped later, during token issuance and serialisation, so reusing it
+   * would shift every {@code login_timestamp} a little later and, against Section 5.2's 15-minute
+   * grace period, could mark a genuinely on-time login as late.
+   *
+   * @param username the submitted username
+   * @param rawPassword the submitted password
+   * @param sourceIp the client address for the {@code login_event} audit columns, or null
+   * @return the token pair
+   */
+  public AuthResponse login(String username, String rawPassword, String sourceIp) {
     AppUser user = findByUsername(username);
     if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
       throw new InvalidCredentialsException();
     }
+    // Captured at credential verification, not at publish time - see the method note.
+    OffsetDateTime loginTimestamp = OffsetDateTime.now();
     AuthResponse response = issueTokenPair(user);
     // user.login.success drives the lateness engine (Sections 5.2, 7); publishing it can never
     // fail a login that already succeeded - LoginEventPublisher swallows broker errors.
-    loginEvents.publishLoginSuccess(user);
+    loginEvents.publishLoginSuccess(user, loginTimestamp, sourceIp);
     return response;
   }
 

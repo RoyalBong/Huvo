@@ -54,7 +54,8 @@ class EventEnvelopeTest {
         EventEnvelope.of(
             EventTypes.USER_LOGIN_SUCCESS,
             "identity-service",
-            new EventTypes.LoginPayload(1L, 2L, "HR"));
+            new EventTypes.LoginPayload(
+                1L, 2L, "HR", OffsetDateTime.parse("2026-09-27T09:15:00+05:30"), "10.0.0.7"));
     EventEnvelope<Long> employee = EventEnvelope.of("employee.created", "identity-service", 7L);
 
     assertThat(login.payload().role()).isEqualTo("HR");

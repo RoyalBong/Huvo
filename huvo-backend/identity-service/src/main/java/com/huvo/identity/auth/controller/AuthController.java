@@ -13,9 +13,11 @@ import com.huvo.identity.auth.dto.AuthResponse;
 import com.huvo.identity.auth.dto.LoginRequest;
 import com.huvo.identity.auth.dto.PrincipalResponse;
 import com.huvo.identity.auth.dto.RefreshRequest;
+import com.huvo.identity.auth.messaging.LoginEventPublisher;
 import com.huvo.identity.auth.service.AuthService;
 import com.huvo.security.HuvoPrincipal;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -36,8 +38,11 @@ public class AuthController {
   private final AuthService service;
 
   @PostMapping("/login")
-  public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-    return service.login(request.username(), request.password());
+  public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
+    // Read the client address here, at the only layer that still has the request. The service
+    // takes it as a plain value so it stays testable and framework-free.
+    return service.login(
+        request.username(), request.password(), LoginEventPublisher.clientIp(http));
   }
 
   /** Exchanges a still-valid refresh token for a new pair; the presented one stops working. */
