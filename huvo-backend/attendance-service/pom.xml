@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.5.5</version>
+    <relativePath/> <!-- lookup parent from repository -->
+  </parent>
+
+  <!--
+    Huvo_Backend_Context.md Sections 3.1, 3.2, 5, 11: attendance-service is standalone and
+    deliberately so. It is the one domain with genuinely spiky load (everyone logs in around
+    shift start) and the core differentiator, so it gets its own process, its own schema
+    (huvo_attendance) and its own deploy pipeline. It owns the Section 5 lateness engine,
+    which lives in a dedicated `engine` package rather than inside the consumer or a
+    controller.
+
+    Independently buildable: not a module of a shared reactor (Section 11), so this service's
+    build failure never blocks another service's deploy.
+  -->
+  <groupId>com.huvo</groupId>
+  <artifactId>attendance-service</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>attendance-service</name>
+  <description>Huvo attendance service - the Section 5 lateness engine, standalone</description>
+
+  <properties>
+    <java.version>17</java.version>
+    <spotless.version>3.10.3</spotless.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <!--
+      Authorization only (Section 4.2): tokens are issued by identity-service and validated
+      here in-process by huvo-security-lib. No gateway validates tokens, so every service
+      repeats the filter chain rather than trusting the network.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+
+    <!--
+      Shared modules, wired in from day one (Section 10) rather than retrofitted:
+      - huvo-security-lib - JWT validation and HuvoPrincipal
+      - huvo-event-contracts - the user.login.success payload this service consumes, so the
+        producer and consumer cannot drift apart
+      - huvo-audit-client - guaranteed-audit writes for the Section 5.2 override path
+
+      Plain Maven dependencies, not reactor modules, so install them first:
+      mvn -f common-libs/huvo-security-lib/pom.xml install
+      mvn -f common-libs/huvo-event-contracts/pom.xml install
+      mvn -f common-libs/huvo-audit-client/pom.xml install
+    -->
+    <dependency>
+      <groupId>com.huvo</groupId>
+      <artifactId>huvo-security-lib</artifactId>
+      <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>com.huvo</groupId>
+      <artifactId>huvo-event-contracts</artifactId>
+      <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>com.huvo</groupId>
+      <artifactId>huvo-audit-client</artifactId>
+      <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+
+    <!-- Schema migrations are the only source of DDL changes (Section 10). -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-mysql</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <optional>true</optional>
+    </dependency>
+
+    <!-- Tests must run on any agent, without MySQL or RabbitMQ (Section 9). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.amqp</groupId>
+      <artifactId>spring-rabbit-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- Section 0: deployable JAR name is huvo-<servicename> -> huvo-attendance-service.jar -->
+    <finalName>huvo-attendance-service</finalName>
+    <plugins>
+      <!--
+        Huvo_Backend_Context.md Section 10: one formatter for every service, enforced by the
+        build. Copies of this block live in each service pom (no shared parent/reactor,
+        Section 11), so keep the version + config in sync.
+      -->
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.version}</version>
+        <configuration>
+          <java>
+            <googleJavaFormat>
+              <version>1.28.0</version>
+              <style>GOOGLE</style>
+            </googleJavaFormat>
+            <removeUnusedImports />
+            <importOrder>
+              <order>java,javax,org,com</order>
+            </importOrder>
+            <trimTrailingWhitespace />
+            <endWithNewline />
+          </java>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>verify</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+          <excludes>
+            <exclude>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+            </exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
