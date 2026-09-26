@@ -276,18 +276,97 @@ class EmployeeApiTest {
   }
 
   /**
-   * Reads are deliberately still open to any authenticated role while the directory-scope question
-   * is pending, so pin that behaviour here - if the endpoints get scoped later, this test is the
-   * reminder to update it deliberately.
+   * The directory itself stays open to any authenticated role, but pay is withheld: a MANAGER
+   * browsing the org chart sees who works where, with no {@code salary} key at all. Asserted as
+   * absent rather than null/zero, so "we forgot to strip it" cannot pass.
    */
   @Test
-  void stillLetsAnEmployeeTokenReadTheDirectory() throws Exception {
+  void hidesSalaryFromAManagerListingTheDirectory() throws Exception {
     repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
+
+    mockMvc
+        .perform(get("/api/employees").with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].name").value("Asha Rao"))
+        .andExpect(jsonPath("$[0].departmentId").value("3"))
+        .andExpect(jsonPath("$[0].salary").doesNotExist());
+  }
+
+  /** Same for a plain EMPLOYEE, and on the single-record endpoint for someone else's record. */
+  @Test
+  void hidesSalaryFromAnEmployeeReadingAnotherRecord() throws Exception {
+    Employee other = repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
 
     mockMvc
         .perform(get("/api/employees").with(BearerTokens.forRole(tokens, "EMPLOYEE")))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.length()").value(1));
+        .andExpect(jsonPath("$[0].salary").doesNotExist());
+
+    mockMvc
+        .perform(
+            get("/api/employees/" + other.getId()).with(BearerTokens.forRole(tokens, "EMPLOYEE")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(other.getId().intValue()))
+        .andExpect(jsonPath("$.name").value("Asha Rao"))
+        .andExpect(jsonPath("$.salary").doesNotExist());
+  }
+
+  /** The self-view exception: your own salary is yours, matched on the employeeId claim (§4.2). */
+  @Test
+  void showsSalaryWhenAnEmployeeViewsTheirOwnRecord() throws Exception {
+    Employee self = repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
+
+    mockMvc
+        .perform(
+            get("/api/employees/" + self.getId())
+                .with(BearerTokens.forRoleAndEmployee(tokens, "EMPLOYEE", self.getId())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.salary").value(75000.0));
+  }
+
+  /** A MANAGER gets no self-view bonus - they are simply not entitled to others' pay either. */
+  @Test
+  void hidesSalaryFromAManagerReadingAnotherRecord() throws Exception {
+    Employee other = repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
+
+    mockMvc
+        .perform(
+            get("/api/employees/" + other.getId()).with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.salary").doesNotExist());
+  }
+
+  /** ADMIN and HR keep full visibility of the directory, salary included. */
+  @Test
+  void showsSalaryInTheDirectoryToAdminAndHr() throws Exception {
+    repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
+
+    mockMvc
+        .perform(get("/api/employees").with(BearerTokens.forRole(tokens, "ADMIN")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].salary").value(75000.0));
+
+    mockMvc
+        .perform(get("/api/employees").with(BearerTokens.forRole(tokens, "HR")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].salary").value(75000.0));
+  }
+
+  /**
+   * A token with no employeeId claim (issued before the caller was linked to a record) must not be
+   * treated as a self-view of any id, or the exception would become a way to read anyone's pay.
+   */
+  @Test
+  void hidesSalaryWhenTheTokenHasNoEmployeeIdClaim() throws Exception {
+    Employee other = repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
+
+    mockMvc
+        .perform(
+            get("/api/employees/" + other.getId())
+                .with(BearerTokens.forRoleAndEmployee(tokens, "EMPLOYEE", null)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.salary").doesNotExist());
   }
 
   @Test

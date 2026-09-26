@@ -41,9 +41,22 @@ public final class BearerTokens {
    * @param role one of ADMIN, HR, MANAGER, EMPLOYEE (§4.1).
    */
   public static RequestPostProcessor forRole(HuvoTokenService tokens, String role) {
+    return forRoleAndEmployee(tokens, role, TEST_EMPLOYEE_ID);
+  }
+
+  /**
+   * As {@link #forRole}, but with an explicit {@code employeeId} claim, for tests that exercise a
+   * self-view exception where the caller is only entitled to their own record.
+   *
+   * @param tokens the token service the filter under test will validate against.
+   * @param role one of ADMIN, HR, MANAGER, EMPLOYEE (§4.1).
+   * @param employeeId the caller's own employee record, or null when they are not linked to one.
+   */
+  public static RequestPostProcessor forRoleAndEmployee(
+      HuvoTokenService tokens, String role, Long employeeId) {
     return request -> {
       String accessToken =
-          tokens.issueAccessToken(TEST_USER_ID, role, List.of(1L, 2L, 3L), TEST_EMPLOYEE_ID);
+          tokens.issueAccessToken(TEST_USER_ID, role, List.of(1L, 2L, 3L), employeeId);
       request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
       return request;
     };

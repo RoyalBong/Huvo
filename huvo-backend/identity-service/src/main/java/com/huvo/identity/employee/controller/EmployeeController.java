@@ -5,12 +5,16 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import com.huvo.identity.employee.dto.EmployeeRequest;
 import com.huvo.identity.employee.dto.EmployeeResponse;
+import com.huvo.identity.employee.dto.EmployeeSummaryResponse;
+import com.huvo.identity.employee.entity.Employee;
 import com.huvo.identity.employee.service.EmployeeService;
 import com.huvo.identity.exception.ResourceNotFoundException;
+import com.huvo.security.HuvoPrincipal;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,21 +32,52 @@ public class EmployeeController {
   private final EmployeeService service;
 
   /**
-   * Reads are open to any authenticated role for now: the org directory is company-wide reference
-   * data, not a private record. Scoping these by {@code departmentIds} is a product decision (see
-   * the note on {@link #getAllEmployees()}), not a code one.
+   * The directory is open to any authenticated role — who works here is org-chart data, not private
+   * — but pay is not. ADMIN/HR get the full representation; everyone else gets {@link
+   * EmployeeSummaryResponse} with no salary field at all.
+   *
+   * <p>Returning a {@code List<?>} is deliberate: the element type varies by caller, and that is
+   * what the frontend must handle. A single response type with an optional salary invites
+   * accidental exposure; two named shapes cannot drift.
    */
   @GetMapping
-  public List<EmployeeResponse> getAllEmployees() {
-    return service.getAllEmployees().stream().map(EmployeeResponse::from).toList();
+  public List<?> getAllEmployees(@AuthenticationPrincipal HuvoPrincipal principal) {
+    if (maySeeSalaryOfAnyone(principal)) {
+      return service.getAllEmployees().stream().map(EmployeeResponse::from).toList();
+    }
+    return service.getAllEmployees().stream().map(EmployeeSummaryResponse::from).toList();
   }
 
+  /**
+   * Same pay rule as the list, plus the self-view exception: an employee may always read their own
+   * salary. The list deliberately does not grant it — a caller is one row among many there, and the
+   * shape is chosen once for the whole response.
+   */
   @GetMapping("/{id}")
-  public EmployeeResponse getEmployeeById(@PathVariable Long id) {
-    return service
-        .getEmployeeById(id)
-        .map(EmployeeResponse::from)
-        .orElseThrow(() -> new ResourceNotFoundException("Employee " + id + " was not found"));
+  public Object getEmployeeById(
+      @PathVariable Long id, @AuthenticationPrincipal HuvoPrincipal principal) {
+    Employee found =
+        service
+            .getEmployeeById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Employee " + id + " was not found"));
+    if (maySeeSalaryOfAnyone(principal) || isSelf(id, principal)) {
+      return EmployeeResponse.from(found);
+    }
+    return EmployeeSummaryResponse.from(found);
+  }
+
+  /** Only ADMIN and HR may see anyone's salary (Section 4.1). */
+  private static boolean maySeeSalaryOfAnyone(HuvoPrincipal principal) {
+    return principal != null && ("ADMIN".equals(principal.role()) || "HR".equals(principal.role()));
+  }
+
+  /**
+   * The self-view exception, compared against the {@code employeeId} claim (§4.2). Null-safe
+   * because a token issued before the caller was linked to an employee record carries no such
+   * claim, and {@code Long.equals(null)} is false — such a caller is nobody's self-view.
+   */
+  private static boolean isSelf(Long id, HuvoPrincipal principal) {
+    return principal != null && id.equals(principal.employeeId());
   }
 
   /**

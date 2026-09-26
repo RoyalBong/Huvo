@@ -31,5 +31,12 @@ public class Employee {
   @Column(name = "department_id")
   private String departmentId;
 
+  /**
+   * TODO(payroll-service): this column is a phase-1 placeholder. Pay structure, components and
+   * history properly belong to payroll-service (Huvo_Backend_Context.md §3.1), which does not exist
+   * yet; until it does, identity-service stores a single flat number so the employee API and the
+   * org chart are usable. Do not let this become the real home for salary data by default — when
+   * payroll-service lands, this moves there and identity-service reads a projection.
+   */
   private double salary;
 }
