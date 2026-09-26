@@ -80,12 +80,16 @@ public class AttendanceEvaluationService {
   @Transactional
   public LatenessDecision evaluateAndPersist(Long employeeId, OffsetDateTime loginAt) {
     LocalDate date = loginAt.atZoneSameInstant(zone).toLocalDate();
-    boolean alreadyDecided = days.existsByEmployeeIdAndDate(employeeId, date);
+    Optional<AttendanceDay> today = days.findByEmployeeIdAndDate(employeeId, date);
+    boolean alreadyDecided = today.isPresent();
     Optional<ShiftWindow> shift = resolveShift(employeeId, date);
 
     // The two inputs the engine cannot derive for itself, and the ones most likely to be wrong:
     // the streak walks back over scheduled working days only, skipping weekends and any day the
     // employee was not expected in.
+    //
+    // The range is exclusive of today on purpose - the streak measures the days *before* this
+    // login. Today's own row is read separately below, because leave is a property of today.
     Map<LocalDate, AttendanceStatus> history =
         StreakDeriver.indexByDate(
             days.findByEmployeeIdAndDateGreaterThanEqualAndDateLessThanOrderByDateAsc(
@@ -104,12 +108,24 @@ public class AttendanceEvaluationService {
             currentStreak,
             previousDayWasLate,
             alreadyDecided,
-            history.get(date) == AttendanceStatus.ON_LEAVE,
+            isOnLeave(today),
             calendar,
             zone);
 
     persist(decision, counters, loginAt);
     return decision;
+  }
+
+  /**
+   * Whether approved leave covers today (Section 5.3).
+   *
+   * <p>Driven by the {@code attendance_day} row that the {@code leave.approved} consumer writes, or
+   * by an admin override. Read from today's row rather than the streak history, because the history
+   * range deliberately excludes today - a separate query here is what keeps that exclusion from
+   * silently turning this flag off.
+   */
+  private static boolean isOnLeave(Optional<AttendanceDay> today) {
+    return today.map(day -> day.getStatus() == AttendanceStatus.ON_LEAVE).orElse(false);
   }
 
   /**

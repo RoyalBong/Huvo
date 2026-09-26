@@ -134,6 +134,48 @@ class EventTypesTest {
   }
 
   @Test
+  void theLeaveKeySitsUnderTheLeavePrefix() {
+    // Section 7: worklife-service owns leave, and attendance-service consumes leave.approved.
+    assertThat(EventTypes.LEAVE_APPROVED).startsWith("leave.");
+    assertThat(EventTypes.LEAVE_REJECTED).startsWith("leave.");
+  }
+
+  @Test
+  void theLeaveWildcardMatchesBothLeaveKeys() {
+    assertThat(matches(EventTypes.LEAVE_ALL, EventTypes.LEAVE_APPROVED)).isTrue();
+    assertThat(matches(EventTypes.LEAVE_ALL, EventTypes.LEAVE_REJECTED)).isTrue();
+  }
+
+  @Test
+  void theLeavePatternDoesNotLeakOtherDomains() {
+    assertThat(matches(EventTypes.LEAVE_ALL, EventTypes.USER_LOGIN_SUCCESS)).isFalse();
+    assertThat(matches(EventTypes.LEAVE_ALL, EventTypes.ATTENDANCE_LATE_DETECTED)).isFalse();
+  }
+
+  @Test
+  void theLeavePayloadCoversARangeBecauseLeaveSpansDays() {
+    // One row per covered day is what marks them ON_LEAVE, and is also what stops a day the
+    // employee was not expected in from breaking a late streak.
+    EventTypes.LeaveApprovedPayload payload =
+        new EventTypes.LeaveApprovedPayload(
+            42L, java.time.LocalDate.of(2026, 9, 28), java.time.LocalDate.of(2026, 10, 2), 9001L);
+
+    assertThat(payload.employeeId()).isEqualTo(42L);
+    assertThat(payload.from()).isBefore(payload.to());
+    assertThat(payload.leaveId()).isEqualTo(9001L);
+  }
+
+  @Test
+  void theLeavePayloadCarriesNoSecrets() {
+    var fields =
+        java.util.Arrays.stream(EventTypes.LeaveApprovedPayload.class.getRecordComponents())
+            .map(java.lang.reflect.RecordComponent::getName)
+            .toList();
+
+    assertThat(fields).containsExactlyInAnyOrder("employeeId", "from", "to", "leaveId");
+  }
+
+  @Test
   void everyDeclaredKeyIsUnique() {
     String[] all = {
       EventTypes.EMPLOYEE_CREATED,
@@ -144,7 +186,9 @@ class EventTypesTest {
       EventTypes.DEPARTMENT_DELETED,
       EventTypes.USER_LOGIN_SUCCESS,
       EventTypes.ATTENDANCE_LATE_DETECTED,
-      EventTypes.ATTENDANCE_AUTO_ABSENT_TRIGGERED
+      EventTypes.ATTENDANCE_AUTO_ABSENT_TRIGGERED,
+      EventTypes.LEAVE_APPROVED,
+      EventTypes.LEAVE_REJECTED
     };
 
     assertThat(all).doesNotHaveDuplicates();

@@ -129,4 +129,31 @@ public final class EventTypes {
       return streak >= 3 ? TRIGGER_STREAK : TRIGGER_WEEKLY_FREQUENCY;
     }
   }
+
+  // --- leave domain: worklife-service -> notify, attendance ---
+
+  public static final String LEAVE_APPROVED = "leave.approved";
+  public static final String LEAVE_REJECTED = "leave.rejected";
+
+  /** Binding pattern for the full leave stream. */
+  public static final String LEAVE_ALL = "leave.#";
+
+  /** The exchange worklife-service publishes leave on. */
+  public static final String LEAVE_EXCHANGE = "leave.exchange";
+
+  /**
+   * Leave was approved (Section 7). attendance-service consumes this to mark the covered days
+   * {@code ON_LEAVE}, so Section 5.3's "approved leave that day" rule skips the lateness logic.
+   *
+   * <p>A range rather than a single date, because leave spans days. The consumer writes one {@code
+   * attendance_day} per covered day, which is also what the streak derivation needs: a day the
+   * employee was not expected in must not break a late streak.
+   *
+   * @param employeeId whose leave it is
+   * @param from the first day covered, inclusive
+   * @param to the last day covered, inclusive
+   * @param leaveId the leave request id, for traceability
+   */
+  public record LeaveApprovedPayload(
+      Long employeeId, java.time.LocalDate from, java.time.LocalDate to, Long leaveId) {}
 }

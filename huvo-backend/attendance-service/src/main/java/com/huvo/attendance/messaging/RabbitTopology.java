@@ -29,6 +29,9 @@ public class RabbitTopology {
   /** This service's private queue on the identity exchange. */
   public static final String LOGIN_QUEUE = "attendance.login-consume";
 
+  /** This service's private queue on the leave exchange, for {@code leave.approved}. */
+  public static final String LEAVE_QUEUE = "attendance.leave-consume";
+
   @Bean
   public TopicExchange attendanceExchange() {
     // durable (survives a broker restart), non-auto-delete (declared topology is stable)
@@ -52,5 +55,30 @@ public class RabbitTopology {
     return BindingBuilder.bind(loginConsumeQueue())
         .to(identityExchange())
         .with(EventTypes.USER_LOGIN_SUCCESS);
+  }
+
+  @Bean
+  public TopicExchange leaveExchange() {
+    // Declared for the same reason as identityExchange: a consumer must not depend on the producer
+    // having started first, or a rolling restart of worklife-service takes attendance down with it.
+    return new TopicExchange(EventTypes.LEAVE_EXCHANGE, true, false);
+  }
+
+  @Bean
+  public Queue leaveConsumeQueue() {
+    return new Queue(LEAVE_QUEUE, true);
+  }
+
+  /**
+   * Binds only {@code leave.approved}, not {@code leave.#}.
+   *
+   * <p>A rejected application is irrelevant here, and binding the wildcard would queue events this
+   * service would only drop. The precise key is the point of a topic exchange.
+   */
+  @Bean
+  public Binding leaveConsumeBinding() {
+    return BindingBuilder.bind(leaveConsumeQueue())
+        .to(leaveExchange())
+        .with(EventTypes.LEAVE_APPROVED);
   }
 }
