@@ -18,11 +18,11 @@ import lombok.Setter;
 @AllArgsConstructor
 public class Department {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    private String name;
+  private String name;
 
-    private String location;
+  private String location;
 }

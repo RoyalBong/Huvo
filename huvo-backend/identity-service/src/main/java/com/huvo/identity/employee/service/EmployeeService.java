@@ -1,24 +1,25 @@
 package com.huvo.identity.employee.service;
 
-import com.huvo.identity.employee.entity.Employee;
 import java.util.List;
 import java.util.Optional;
 
+import com.huvo.identity.employee.entity.Employee;
+
 public interface EmployeeService {
 
-    List<Employee> getAllEmployees();
+  List<Employee> getAllEmployees();
 
-    Optional<Employee> getEmployeeById(Long id);
+  Optional<Employee> getEmployeeById(Long id);
 
-    Employee createEmployee(Employee employee);
+  Employee createEmployee(Employee employee);
 
-    /**
-     * @throws ResourceNotFoundException if no employee with {@code id} exists
-     */
-    Employee updateEmployee(Long id, Employee employee);
+  /**
+   * @throws ResourceNotFoundException if no employee with {@code id} exists
+   */
+  Employee updateEmployee(Long id, Employee employee);
 
-    /**
-     * @throws ResourceNotFoundException if no employee with {@code id} exists
-     */
-    void deleteEmployee(Long id);
+  /**
+   * @throws ResourceNotFoundException if no employee with {@code id} exists
+   */
+  void deleteEmployee(Long id);
 }

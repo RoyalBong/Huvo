@@ -239,7 +239,8 @@ One topic exchange per bounded context (`attendance.exchange`, `task.exchange`, 
 | Event | Publisher | Consumers |
 |---|---|---|
 | `user.login.success` | identity-service | attendance-service |
-| `employee.created` / `employee.updated` | identity-service | attendance-service, worklife-service, payroll-service |
+| `employee.created` / `employee.updated` / `employee.deleted` | identity-service | attendance-service, worklife-service, payroll-service |
+| `department.created` / `department.updated` / `department.deleted` | identity-service | attendance-service, worklife-service, payroll-service (future) |
 | `attendance.late.detected` | attendance-service | notify-service |
 | `attendance.autoAbsent.triggered` | attendance-service | notify-service, payroll-service (future) |
 | `task.assigned` | worklife-service | notify-service |
