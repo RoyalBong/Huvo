@@ -5,12 +5,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
 import com.huvo.attendance.day.entity.AttendanceDay;
 import com.huvo.attendance.engine.AttendanceStatus;
 import com.huvo.attendance.engine.FixedWorkingCalendar;
+import com.huvo.attendance.engine.LateCounters;
+import com.huvo.attendance.engine.LatenessDecision;
+import com.huvo.attendance.engine.LatenessEngine;
+import com.huvo.attendance.engine.ShiftWindow;
 import com.huvo.attendance.engine.WorkingCalendar;
 
 /**
@@ -122,11 +127,83 @@ class StreakDeriverTest {
 
   @Test
   void aMissingRowOnAWorkingDayStopsTheWalkRatherThanClaimingZero() {
-    // No attendance_day row for Friday at all. The conservative answer is the streak up to that
-    // point: an incomplete history must never manufacture an auto-absent escalation.
+    // No attendance_day row for Friday at all, and nothing recorded before it either.
     Map<LocalDate, AttendanceStatus> history = historyOf(day(THURSDAY, AttendanceStatus.LATE));
 
-    assertThat(StreakDeriver.streakBefore(history, MONDAY, MON_FRI)).isEqualTo(1);
+    assertThat(StreakDeriver.streakBefore(history, MONDAY, MON_FRI)).isZero();
+  }
+
+  @Test
+  void aGapStopsTheWalkEvenWhenLateDaysSitBehindIt() {
+    // The discriminating case, and the one that matters most.
+    //
+    // Friday is a scheduled working day with no row, so the walk has no evidence about it. The late
+    // days behind the gap must NOT be counted: skipping over the gap to reach them would report a
+    // streak of 2 from an incomplete history, and the engine would then escalate Monday to ABSENT
+    // and email the employee and their manager for days it never actually verified.
+    //
+    // A test with no late days behind the gap cannot catch this - both "stop" and "skip through"
+    // answer 0 for it. The late days are what make the two behaviours differ.
+    Map<LocalDate, AttendanceStatus> history =
+        historyOf(day(WEDNESDAY, AttendanceStatus.LATE), day(THURSDAY, AttendanceStatus.LATE));
+
+    // No row for Friday.
+    assertThat(history).doesNotContainKey(FRIDAY);
+    assertThat(MON_FRI.isWorkingDay(FRIDAY)).isTrue();
+
+    assertThat(StreakDeriver.streakBefore(history, MONDAY, MON_FRI)).isZero();
+  }
+
+  @Test
+  void aGapIsNotSkipThroughSoItCannotInflateAStreakIntoAnEscalation() {
+    // The end-to-end version: whatever the derivation reports, Monday's own late login must not
+    // escalate on the strength of days the engine never saw evidence for.
+    Map<LocalDate, AttendanceStatus> history =
+        historyOf(day(WEDNESDAY, AttendanceStatus.LATE), day(THURSDAY, AttendanceStatus.LATE));
+    int streak = StreakDeriver.streakBefore(history, MONDAY, MON_FRI);
+
+    LatenessDecision decision =
+        new LatenessEngine()
+            .evaluate(
+                42L,
+                MONDAY.atTime(10, 0).atOffset(java.time.ZoneOffset.UTC),
+                Optional.of(
+                    new ShiftWindow(
+                        1L,
+                        "Morning",
+                        java.time.LocalTime.of(9, 0),
+                        java.time.LocalTime.of(17, 0),
+                        15)),
+                LateCounters.zero(),
+                streak,
+                streak > 0,
+                false,
+                false,
+                MON_FRI,
+                java.time.ZoneOffset.UTC);
+
+    // A streak of 1 would not escalate, but 2 days would - so this is the assertion that a gap
+    // cannot turn two unverifiable days into an ABSENT and a manager notification.
+    assertThat(streak).isLessThan(2);
+    assertThat(decision.autoAbsentTriggered()).isFalse();
+  }
+
+  @Test
+  void daysBeforeAGapAreCountedButDaysBehindItAreNot() {
+    // The other direction, and the one that shows the boundary is respected on both sides.
+    //
+    // Friday, Thursday and Wednesday are late and count. Tuesday has no row, so the walk stops
+    // there - the previous Monday's lateness, sitting behind the gap, is deliberately not counted.
+    // A skip-through would report 4 and a walk that stopped too eagerly would report 0.
+    Map<LocalDate, AttendanceStatus> history =
+        historyOf(
+            day(PREVIOUS_MONDAY, AttendanceStatus.LATE),
+            day(WEDNESDAY, AttendanceStatus.LATE),
+            day(THURSDAY, AttendanceStatus.LATE),
+            day(FRIDAY, AttendanceStatus.LATE));
+
+    assertThat(history).doesNotContainKey(TUESDAY);
+    assertThat(StreakDeriver.streakBefore(history, MONDAY, MON_FRI)).isEqualTo(3);
   }
 
   @Test

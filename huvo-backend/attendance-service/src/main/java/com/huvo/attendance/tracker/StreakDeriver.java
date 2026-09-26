@@ -60,22 +60,43 @@ public final class StreakDeriver {
     int streak = 0;
     LocalDate cursor = today.minusDays(1);
     for (int step = 0; step < MAX_LOOKBACK_DAYS; step++) {
-      if (!isExpectedIn(cursor, history, calendar)) {
+      // Three distinct cases, and conflating any two of them is wrong:
+      //
+      //   1. not a working day      -> step over it; it cannot break a run of late days
+      //   2. working day, no row     -> STOP; we have no evidence about it
+      //   3. working day, with a row -> judge it
+      //
+      // Cases 1 and 2 look alike (both have "nothing to count") and were originally handled by one
+      // predicate, which silently turned a gap into a skip-through: the walk stepped over a
+      // scheduled day it knew nothing about and went on to count the late days behind it. That
+      // inflated a streak from unverified history, and the engine then escalated the employee to
+      // ABSENT and notified their manager on that basis. Keeping them apart is the whole fix.
+      if (!calendar.isWorkingDay(cursor)) {
+        // A weekend. Stepping over is correct: it was never scheduled, so it is not a missed day.
         cursor = cursor.minusDays(1);
         continue;
       }
+
       AttendanceStatus status = history.get(cursor);
       if (status == null) {
-        // A scheduled working day with no attendance_day row at all: no evidence, so it cannot be
-        // called late. Treating the absence as "on time" would silently break a streak, so the walk
-        // stops instead. An incomplete history must never manufacture an auto-absent escalation.
+        // A scheduled working day with no attendance_day row: incomplete history. Stop rather than
+        // look past the gap, because everything behind it is unverified. An incomplete history must
+        // never manufacture an auto-absent escalation.
         return streak;
       }
+      if (status == AttendanceStatus.HOLIDAY || status == AttendanceStatus.ON_LEAVE) {
+        // A working weekday the company did not work. Like a weekend, it is stepped over rather
+        // than treated as an on-time day, so a holiday or approved leave cannot break a streak.
+        cursor = cursor.minusDays(1);
+        continue;
+      }
       if (status == AttendanceStatus.LATE || status == AttendanceStatus.ABSENT) {
+        // ABSENT included: the engine escalates it from a late day, so it is one.
         streak++;
         cursor = cursor.minusDays(1);
         continue;
       }
+      // PRESENT: worked, and on time. A genuine break in the run.
       return streak;
     }
     return streak;
@@ -93,26 +114,6 @@ public final class StreakDeriver {
   public static boolean wasPreviousScheduledDayLate(
       Map<LocalDate, AttendanceStatus> history, LocalDate today, WorkingCalendar calendar) {
     return streakBefore(history, today, calendar) > 0;
-  }
-
-  /**
-   * Whether the employee was expected in on a date, which is what decides if it counts towards or
-   * breaks a streak.
-   *
-   * <p>Needs both the calendar and the recorded status, because a public holiday falls on a working
-   * weekday: the calendar says it was scheduled, the row says the company did not work it. Only
-   * PRESENT, LATE and ABSENT mean "expected in" - ABSENT included, because the engine escalates it
-   * from a late day and the row may already have been auto-marked.
-   */
-  private static boolean isExpectedIn(
-      LocalDate date, Map<LocalDate, AttendanceStatus> history, WorkingCalendar calendar) {
-    if (!calendar.isWorkingDay(date)) {
-      return false;
-    }
-    AttendanceStatus status = history.get(date);
-    return status == AttendanceStatus.PRESENT
-        || status == AttendanceStatus.LATE
-        || status == AttendanceStatus.ABSENT;
   }
 
   /**
