@@ -1,0 +1,13 @@
+[Unit]
+Description=Huvo Identity Service (auth + employee + department, Section 3.1)
+Documentation=https://github.com/RoyalBong/Huvo
+After=network.target rabbitmq-server.service
+
+[Service]
+Type=simple
+User=huvo
+EnvironmentFile=/etc/huvo/identity-service.env
+# Heap is set explicitly per Section 8.3. This unit hosts three domains
+# (auth + employee + department), so it gets a slightly larger heap than the
+# interim single-domain units had.
+ExecStart=/usr/bin/java -Xms256m -Xmx512m -jar /opt/huvo/identity-service.jar

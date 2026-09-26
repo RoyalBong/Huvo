@@ -4,6 +4,11 @@ Production-grade **HR + Work Management platform** for 10–200 employee compani
 Attendance automation, task visibility, leave, payroll, and internal chat — with a
 dark-mode-first, Linear-grade UX.
 
+> **Single-repo monorepo** (`RoyalBong/Huvo`): `huvo-backend/` + `huvo-frontend/`
+> live side by side in this repo. (Both context docs still say "two separate
+> repositories" — that is stale and will be corrected separately; this layout,
+> not the docs, is authoritative.)
+
 ## What it is
 
 Huvo covers the full employee lifecycle — **Org Structure → Onboarding →
@@ -20,10 +25,9 @@ SPA bundle), **no mock/demo data** in product code, environment-driven config.
 ## Layout
 
 ```text
-Huvo/                  ← this repo (backend + docs; frontend has its own history)
-├── Huvo-backend/      ← all microservices (per Huvo_Backend_Context.md)
-└── Huvo-frontend/     ← git-ignored here; separate repo, own EC2
-    (per Backend Context §0 — it has, or will have, its own git history)
+Huvo/                  ← this repo (monorepo: backend + frontend, one history)
+├── huvo-backend/      ← all microservices (per Huvo_Backend_Context.md)
+└── huvo-frontend/     ← React + Vite SPA (per Huvo_Frontend_Context.md)
 ```
 
 ## Core modules
@@ -37,9 +41,9 @@ Huvo/                  ← this repo (backend + docs; frontend has its own histo
 | Email + in-app notifications + chat WS | `notify-service` | `chat/`, notifications feed |
 | Cross-cutting | `common-libs/` (`huvo-security-lib`, `huvo-audit-client`, `huvo-event-contracts`), `nginx/huvo-backend.conf`, `infra/` (CloudFormation — later step) | Cmd+K palette, single multiplexed WebSocket, settings |
 
-Full specs: `Huvo-backend/Huvo_Backend_Context.md` (architecture, §3 load-grouped
+Full specs: `huvo-backend/Huvo_Backend_Context.md` (architecture, §3 load-grouped
 5-service split, §5 attendance algorithm, §8 AWS, §9 Jenkins JAR deploys, §12 roadmap)
-and `Huvo-frontend/Huvo_Frontend_Context.md` (design system §4, API/WS contracts
+and `huvo-frontend/Huvo_Frontend_Context.md` (design system §4, API/WS contracts
 §5, all 10 modules §6, quality bar §9, structure §10).
 
 ## Tech stack
@@ -49,6 +53,8 @@ and `Huvo-frontend/Huvo_Frontend_Context.md` (design system §4, API/WS contract
   single node), SES (email), S3 (assets + JAR artifacts), DynamoDB (chat),
   Nginx path-based routing (no Gateway/Eureka/Config Server), Jenkins →
   S3 → SSM Run Command → systemd (`huvo-<service>.service`) on one Backend EC2.
+  Working directory for all backend paths (Jenkins `dir()`, nginx `cp`,
+  infra `cp`): `huvo-backend/`.
 - **Frontend:** React 18 + Vite + strict TypeScript, Tailwind tokens
   (dark hero + complete light mode), TanStack Query + Zustand, single
   Bearer-fetch client with single-flight silent refresh, one multiplexed

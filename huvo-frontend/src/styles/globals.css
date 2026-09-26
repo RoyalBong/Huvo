@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Huvo design tokens (Huvo_Frontend_Context.md §4).
+ * Dark mode is the hero experience; light mode is equally complete.
+ * Values are RGB triplets so Tailwind's <alpha-value> works everywhere.
+ */
+@layer base {
+  :root {
+    color-scheme: dark;
+
+    --c-bg: 10 12 17; /* deep charcoal, subtle blue undertone — never pure black (§4.1) */
+    --c-surface-1: 15 18 26;
+    --c-surface-2: 20 24 34;
+    --c-surface-3: 27 32 45;
+    --c-border: 36 42 58;
+    --c-fg: 237 240 248;
+    --c-muted: 154 162 180;
+    --c-faint: 124 132 152;
+
+    --c-primary: 99 102 241; /* soft indigo / electric violet (§4.1) */
+    --c-primary-ink: 165 172 255;
+    --c-primary-fg: 255 255 255;
+
+    --c-accent: 34 211 238; /* cyan/teal — live & success indicators (§4.1) */
+    --c-accent-fg: 6 12 16;
+
+    --c-success: 16 185 129;
+    --c-success-fg: 4 20 14;
+    --c-warning: 245 158 11;
+    --c-warning-fg: 26 16 2;
+    --c-danger: 244 63 94;
+    --c-danger-fg: 255 255 255;
+    --c-info: 14 165 233;
+    --c-info-fg: 4 14 22;
+  }
+
+  html.light {
+    color-scheme: light;
+
+    --c-bg: 247 248 251;
+    --c-surface-1: 255 255 255;
+    --c-surface-2: 241 243 248;
+    --c-surface-3: 233 236 244;
+    --c-border: 225 229 238;
+    --c-fg: 15 20 32;
+    --c-muted: 90 99 120;
+    --c-faint: 140 147 165;
+
+    --c-primary: 79 70 229;
+    --c-primary-ink: 67 56 202;
+    --c-primary-fg: 255 255 255;
+
+    --c-accent: 8 145 178;
+    --c-accent-fg: 255 255 255;
+
+    --c-success: 5 150 105;
+    --c-success-fg: 255 255 255;
+    --c-warning: 217 119 6;
+    --c-warning-fg: 26 16 2;
+    --c-danger: 225 29 72;
+    --c-danger-fg: 255 255 255;
+    --c-info: 2 132 199;
+    --c-info-fg: 255 255 255;
+  }
+
+  html {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background-color: rgb(var(--c-bg));
+  }
+
+  body {
+    @apply min-h-dvh bg-bg text-fg antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: rgb(var(--c-primary) / 0.35);
+  }
+
+  /* Thin, calm scrollbars — precision-tool feel */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--c-border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--c-border));
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /*
+   * Restrained glassmorphism (§2): headers, cards, modals, navigation only —
+   * never large blocks of text or dense data on a glass surface.
+   */
+  .glass {
+    background-color: rgb(var(--c-surface-1) / 0.72);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid rgb(var(--c-border) / 0.8);
+  }
+
+  html.light .glass {
+    background-color: rgb(var(--c-surface-1) / 0.8);
+  }
+}
+
+/* Motion must respect user preference everywhere, without exception (§4.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

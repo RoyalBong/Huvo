@@ -1,3 +1,5 @@
-# The frontend is a separate repository (Huvo_Backend_Context.md, Section 0).
-# Keep it out of this backend repo; it has (or will have) its own git history.
-/Huvo-frontend/
+# Huvo monorepo — both huvo-backend/ and huvo-frontend/ are tracked here
+# (single repo: RoyalBong/Huvo). Only tool output and local secrets stay out.
+node_modules/
+dist/
+
