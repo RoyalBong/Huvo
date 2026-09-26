@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.huvo.audit.AuditClient;
+import com.huvo.identity.audit.AuditRecorder;
 
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -32,6 +33,20 @@ public class AuditConfig {
    *     huvo_audit_log} in prod
    * @param region the AWS region, defaulting to the instance's own region
    * @return the client, or null when auditing is not configured for this environment
+   */
+  /**
+   * Every employee and department mutation in this service is recorded best-effort, on purpose. The
+   * database write has already committed by the time the audit row is appended, so a DynamoDB
+   * failure is logged and swallowed: returning an error would tell the client its create was
+   * rejected when the row is actually there.
+   *
+   * <p>Use {@link AuditRecorder#recordRequired} where the audit row <em>is</em> the operation, not
+   * an observation of it — §5.2's manual admin attendance override, and any future admin or
+   * financial action.
+   *
+   * <p>The consequence worth knowing before reading this trail: a mutation can succeed without
+   * leaving a row, so the log is near-complete, not authoritative. Nothing else here claims
+   * otherwise.
    */
   @Bean
   AuditClient auditClient(

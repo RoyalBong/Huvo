@@ -1,5 +1,6 @@
 package com.huvo.identity.department.service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -44,12 +45,27 @@ public class DepartmentServiceImpl implements DepartmentService {
   public Department createDepartment(Department department) {
     Department savedDepartment = repository.save(department);
     eventPublisher.publishDepartmentCreated(savedDepartment.getId());
+    // Best-effort: the row above is already committed, so a failed audit write must not be
+    // reported to the client as a failed create. See AuditRecorder#record.
     audit.record(
         EventTypes.DEPARTMENT_CREATED,
         ENTITY,
         String.valueOf(savedDepartment.getId()),
-        Map.of("name", savedDepartment.getName(), "location", savedDepartment.getLocation()));
+        details(savedDepartment));
     return savedDepartment;
+  }
+
+  /**
+   * Audit detail built without {@code Map.of}, which rejects null values. The audit call must never
+   * be the reason a mutation fails, and a department may legitimately have no location yet.
+   */
+  private static Map<String, String> details(Department department) {
+    Map<String, String> details = new LinkedHashMap<>();
+    details.put("name", department.getName());
+    if (department.getLocation() != null) {
+      details.put("location", department.getLocation());
+    }
+    return details;
   }
 
   @Override
@@ -61,10 +77,7 @@ public class DepartmentServiceImpl implements DepartmentService {
     Department updatedDepartment = repository.save(department);
     eventPublisher.publishDepartmentUpdated(updatedDepartment.getId());
     audit.record(
-        EventTypes.DEPARTMENT_UPDATED,
-        ENTITY,
-        String.valueOf(id),
-        Map.of("name", updatedDepartment.getName(), "location", updatedDepartment.getLocation()));
+        EventTypes.DEPARTMENT_UPDATED, ENTITY, String.valueOf(id), details(updatedDepartment));
     return updatedDepartment;
   }
 

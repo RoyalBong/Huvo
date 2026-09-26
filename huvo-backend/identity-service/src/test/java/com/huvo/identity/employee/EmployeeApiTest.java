@@ -61,6 +61,31 @@ class EmployeeApiTest {
   @MockitoBean private AuditRecorder audit;
 
   /**
+   * Pins <em>which</em> recorder the CRUD path uses. The best-effort guarantee itself lives inside
+   * {@link AuditRecorder#record} and is covered by {@code AuditRecorderTest}; this test cannot
+   * exercise it, because mocking the recorder replaces the very code under test — a mock told to
+   * throw would fail the request and prove nothing about production behaviour.
+   *
+   * <p>What matters at this layer is that create goes through the best-effort {@code record} and
+   * not the throwing {@code recordRequired}. Swapping a CRUD site to the guaranteed variant would
+   * turn a brief DynamoDB outage into user-visible 500s, and that should have to be a deliberate,
+   * reviewed change rather than something a reviewer has to notice.
+   */
+  @Test
+  void crudUsesTheBestEffortRecorderRatherThanTheRequiredOne() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/employees")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Asha Rao\",\"salary\":1.0}")
+                .with(BearerTokens.forAdmin(tokens)))
+        .andExpect(status().isCreated());
+
+    verify(audit).record(eq("employee.created"), eq("employee"), anyString(), any());
+    verify(audit, never()).recordRequired(anyString(), anyString(), anyString(), any());
+  }
+
+  /**
    * These endpoints stopped being anonymous when the filter chain landed, so every request now
    * carries a real signed ADMIN token rather than an unauthenticated call.
    */

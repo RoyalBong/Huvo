@@ -1,5 +1,6 @@
 package com.huvo.identity.employee.service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,12 +43,31 @@ public class EmployeeServiceImpl implements EmployeeService {
   public Employee createEmployee(Employee employee) {
     Employee savedEmployee = repository.save(employee);
     eventPublisher.publishEmployeeCreated(savedEmployee.getId());
+    // Best-effort: the row above is already committed, so a failed audit write must not be
+    // reported to the client as a failed create. See AuditRecorder#record.
     audit.record(
         EventTypes.EMPLOYEE_CREATED,
         ENTITY,
         String.valueOf(savedEmployee.getId()),
-        Map.of("name", savedEmployee.getName(), "departmentId", savedEmployee.getDepartmentId()));
+        details(savedEmployee));
     return savedEmployee;
+  }
+
+  /**
+   * Audit detail built without {@code Map.of}, which rejects null values. The audit call must never
+   * be the reason a mutation fails, and an employee may legitimately have no department yet.
+   */
+  private static Map<String, String> details(Employee employee) {
+    Map<String, String> details = new LinkedHashMap<>();
+    details.put("name", employee.getName());
+    putIfPresent(details, "departmentId", employee.getDepartmentId());
+    return details;
+  }
+
+  private static void putIfPresent(Map<String, String> details, String key, String value) {
+    if (value != null) {
+      details.put(key, value);
+    }
   }
 
   @Override
@@ -58,12 +78,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     employee.setId(id);
     Employee updatedEmployee = repository.save(employee);
     eventPublisher.publishEmployeeUpdated(employee.getId());
-    audit.record(
-        EventTypes.EMPLOYEE_UPDATED,
-        ENTITY,
-        String.valueOf(id),
-        Map.of(
-            "name", updatedEmployee.getName(), "departmentId", updatedEmployee.getDepartmentId()));
+    audit.record(EventTypes.EMPLOYEE_UPDATED, ENTITY, String.valueOf(id), details(updatedEmployee));
     return updatedEmployee;
   }
 
