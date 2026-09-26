@@ -5,8 +5,9 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huvo.events.EventEnvelope;
+import com.huvo.events.EventTypes;
 import com.huvo.identity.config.RabbitConfig;
-import com.huvo.identity.event.EventEnvelope;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,15 +32,15 @@ public class EmployeeEventPublisher {
   private final ObjectMapper objectMapper;
 
   public void publishEmployeeCreated(Long employeeId) {
-    publish("employee.created", employeeId);
+    publish(EventTypes.EMPLOYEE_CREATED, employeeId);
   }
 
   public void publishEmployeeUpdated(Long employeeId) {
-    publish("employee.updated", employeeId);
+    publish(EventTypes.EMPLOYEE_UPDATED, employeeId);
   }
 
   public void publishEmployeeDeleted(Long employeeId) {
-    publish("employee.deleted", employeeId);
+    publish(EventTypes.EMPLOYEE_DELETED, employeeId);
   }
 
   private void publish(String eventType, Long employeeId) {

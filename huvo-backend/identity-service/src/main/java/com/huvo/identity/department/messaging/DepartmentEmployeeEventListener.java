@@ -5,8 +5,8 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huvo.events.EventEnvelope;
 import com.huvo.identity.config.RabbitConfig;
-import com.huvo.identity.event.EventEnvelope;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

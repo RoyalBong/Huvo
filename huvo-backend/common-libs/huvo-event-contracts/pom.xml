@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    Huvo_Backend_Context.md Sections 7, 10, 11: the shared event contracts every
+    publisher and consumer codes against, so the two sides cannot drift.
+
+    Deliberately NOT a Spring Boot app and NOT a Spring dependency. attendance-service,
+    worklife-service, payroll-service and notify-service all depend on this as a plain
+    Maven dependency, so anything Spring-typed here would drag a web context into a
+    consumer that has no use for one. Framework-free like huvo-security-lib.
+  -->
+  <groupId>com.huvo</groupId>
+  <artifactId>huvo-event-contracts</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>huvo-event-contracts</name>
+  <description>Huvo shared event envelopes and payload contracts - Section 7</description>
+  <packaging>jar</packaging>
+
+  <properties>
+    <java.version>17</java.version>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <junit.version>5.11.4</junit.version>
+    <assertj.version>3.26.3</assertj.version>
+    <spotless.version>3.10.3</spotless.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>${assertj.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        Same formatter as every service (Section 10) - keep the version + config in
+        sync with the copies in each service pom (Section 11).
+      -->
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.version}</version>
+        <configuration>
+          <java>
+            <googleJavaFormat>
+              <version>1.28.0</version>
+              <style>GOOGLE</style>
+            </googleJavaFormat>
+            <removeUnusedImports />
+            <importOrder>
+              <order>java,javax,org,com</order>
+            </importOrder>
+            <trimTrailingWhitespace />
+            <endWithNewline />
+          </java>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>verify</phase>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

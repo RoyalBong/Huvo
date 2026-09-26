@@ -2,7 +2,11 @@ package com.huvo.identity.employee;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -24,6 +28,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import com.huvo.identity.audit.AuditRecorder;
 import com.huvo.identity.employee.entity.Employee;
 import com.huvo.identity.employee.messaging.EmployeeEventPublisher;
 import com.huvo.identity.employee.repository.EmployeeRepository;
@@ -45,8 +50,15 @@ class EmployeeApiTest {
 
   @Autowired private HuvoTokenService tokens;
 
-  /** The broker is an external boundary and is not needed for these assertions. */
+  /**
+   * The broker is an external boundary and is not needed for these assertions.
+   *
+   * <p>Audit is a DynamoDB boundary and is likewise mocked: a real audit write needs AWS
+   * credentials, and the trail's contents are the library's contract, not this test's.
+   */
   @MockitoBean private EmployeeEventPublisher eventPublisher;
+
+  @MockitoBean private AuditRecorder audit;
 
   /**
    * These endpoints stopped being anonymous when the filter chain landed, so every request now
@@ -262,9 +274,12 @@ class EmployeeApiTest {
         .andExpect(status().isForbidden());
   }
 
-  /** HR is the non-ADMIN half of {@code hasAnyRole('ADMIN','HR')}, so it must be let through. */
+  /**
+   * HR is the non-ADMIN half of {@code hasAnyRole('ADMIN','HR')}, so it must be let through. Also
+   * the natural place to assert the audit write: a mutation that succeeds must leave a trail row.
+   */
   @Test
-  void allowsAnHrTokenToCreateAnEmployee() throws Exception {
+  void allowsAnHrTokenToCreateAnEmployeeAndAuditsIt() throws Exception {
     mockMvc
         .perform(
             post("/api/employees")
@@ -273,6 +288,41 @@ class EmployeeApiTest {
                 .with(BearerTokens.forRole(tokens, "HR")))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.name").value("Asha Rao"));
+
+    Long createdId = repository.findAll().get(0).getId();
+    verify(audit)
+        .record(
+            eq("employee.created"),
+            eq("employee"),
+            eq(String.valueOf(createdId)),
+            argThat(details -> "Asha Rao".equals(details.get("name"))));
+  }
+
+  /** A refused mutation must not leave an audit row claiming it happened. */
+  @Test
+  void auditsNothingWhenTheCallerIsRefused() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/employees")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Asha Rao\",\"salary\":1.0}")
+                .with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isForbidden());
+
+    verify(audit, never()).record(anyString(), anyString(), anyString(), any());
+  }
+
+  /** The trail must name the entity and the action, which is what reporting queries. */
+  @Test
+  void auditsADeleteWithTheEntityAndAction() throws Exception {
+    Employee saved = repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
+
+    mockMvc
+        .perform(delete("/api/employees/" + saved.getId()).with(BearerTokens.forAdmin(tokens)))
+        .andExpect(status().isNoContent());
+
+    verify(audit)
+        .record(eq("employee.deleted"), eq("employee"), eq(String.valueOf(saved.getId())), any());
   }
 
   /**

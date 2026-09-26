@@ -5,9 +5,10 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huvo.events.EventEnvelope;
+import com.huvo.events.EventTypes;
 import com.huvo.identity.auth.entity.AppUser;
 import com.huvo.identity.config.RabbitConfig;
-import com.huvo.identity.event.EventEnvelope;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,21 +30,24 @@ public class LoginEventPublisher {
   private final ObjectMapper objectMapper;
 
   public void publishLoginSuccess(AppUser user) {
-    var payload = new LoginPayload(user.getId(), user.getEmployeeId(), user.getRole());
-    EventEnvelope<LoginPayload> envelope =
-        EventEnvelope.of("user.login.success", PRODUCED_BY, payload);
+    EventEnvelope<EventTypes.LoginPayload> envelope =
+        EventEnvelope.of(
+            EventTypes.USER_LOGIN_SUCCESS,
+            PRODUCED_BY,
+            new EventTypes.LoginPayload(user.getId(), user.getEmployeeId(), user.getRole()));
     try {
       rabbitTemplate.convertAndSend(
           RabbitConfig.IDENTITY_EXCHANGE,
-          "user.login.success",
+          EventTypes.USER_LOGIN_SUCCESS,
           objectMapper.writeValueAsString(envelope));
-      log.info("Published user.login.success for user {}", user.getId());
+      log.info("Published {} for user {}", EventTypes.USER_LOGIN_SUCCESS, user.getId());
     } catch (JsonProcessingException e) {
       // Never fail the login over event serialisation; log loudly instead.
-      log.error("Could not serialise user.login.success envelope for user {}", user.getId(), e);
+      log.error(
+          "Could not serialise {} envelope for user {}",
+          EventTypes.USER_LOGIN_SUCCESS,
+          user.getId(),
+          e);
     }
   }
-
-  /** Minimal login fact: who logged in, which employee profile, with what role. */
-  public record LoginPayload(Long userId, Long employeeId, String role) {}
 }

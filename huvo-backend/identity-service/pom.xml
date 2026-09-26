@@ -68,6 +68,27 @@
 			<artifactId>huvo-security-lib</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
+		<!--
+			Shared event envelope + routing keys (Section 7). publishers and consumers
+			both code against this, so attendance-service and the rest cannot drift
+			from what identity-service emits. Install with:
+			mvn -f common-libs/huvo-event-contracts/pom.xml install.
+		-->
+		<dependency>
+			<groupId>com.huvo</groupId>
+			<artifactId>huvo-event-contracts</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+		<!--
+			Shared audit-log writer (Sections 3.4, 7): an in-process call that appends
+			to the huvo_audit_log DynamoDB table, not a queue consumer. Install with:
+			mvn -f common-libs/huvo-audit-client/pom.xml install.
+		-->
+		<dependency>
+			<groupId>com.huvo</groupId>
+			<artifactId>huvo-audit-client</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
 
 		<!-- Schema migrations are the only source of DDL changes (Section 10). -->
 		<dependency>

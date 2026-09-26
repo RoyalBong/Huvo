@@ -7,6 +7,8 @@ import org.springframework.amqp.core.TopicExchange;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.huvo.events.EventTypes;
+
 /**
  * One topic exchange per bounded context (Huvo_Backend_Context.md Section 7).
  *
@@ -41,6 +43,6 @@ public class RabbitConfig {
   public Binding departmentEmployeeSyncBinding() {
     return BindingBuilder.bind(departmentEmployeeSyncQueue())
         .to(identityExchange())
-        .with("employee.#");
+        .with(EventTypes.EMPLOYEE_ALL);
   }
 }

@@ -5,8 +5,9 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huvo.events.EventEnvelope;
+import com.huvo.events.EventTypes;
 import com.huvo.identity.config.RabbitConfig;
-import com.huvo.identity.event.EventEnvelope;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,15 +31,15 @@ public class DepartmentEventPublisher {
   private final ObjectMapper objectMapper;
 
   public void publishDepartmentCreated(Long departmentId) {
-    publish("department.created", departmentId);
+    publish(EventTypes.DEPARTMENT_CREATED, departmentId);
   }
 
   public void publishDepartmentUpdated(Long departmentId) {
-    publish("department.updated", departmentId);
+    publish(EventTypes.DEPARTMENT_UPDATED, departmentId);
   }
 
   public void publishDepartmentDeleted(Long departmentId) {
-    publish("department.deleted", departmentId);
+    publish(EventTypes.DEPARTMENT_DELETED, departmentId);
   }
 
   private void publish(String eventType, Long departmentId) {

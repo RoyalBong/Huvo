@@ -2,7 +2,11 @@ package com.huvo.identity.department;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -23,6 +27,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import com.huvo.identity.audit.AuditRecorder;
 import com.huvo.identity.department.entity.Department;
 import com.huvo.identity.department.messaging.DepartmentEventPublisher;
 import com.huvo.identity.department.repository.DepartmentRepository;
@@ -44,8 +49,15 @@ class DepartmentApiTest {
 
   @Autowired private HuvoTokenService tokens;
 
-  /** The broker is an external boundary and is not needed for these assertions. */
+  /**
+   * The broker is an external boundary and is not needed for these assertions.
+   *
+   * <p>Audit is a DynamoDB boundary and is likewise mocked: a real audit write needs AWS
+   * credentials, and the trail's contents are the library's contract, not this test's.
+   */
   @MockitoBean private DepartmentEventPublisher eventPublisher;
+
+  @MockitoBean private AuditRecorder audit;
 
   /**
    * These endpoints stopped being anonymous when the filter chain landed, so every request now
@@ -254,6 +266,40 @@ class DepartmentApiTest {
                 .with(BearerTokens.forRole(tokens, "HR")))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.name").value("Engineering"));
+  }
+
+  /** Every department mutation leaves a trail row, the same as the employee domain. */
+  @Test
+  void auditsADepartmentCreate() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/departments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Engineering\",\"location\":\"Bengaluru\"}")
+                .with(BearerTokens.forAdmin(tokens)))
+        .andExpect(status().isCreated());
+
+    Long createdId = repository.findAll().get(0).getId();
+    verify(audit)
+        .record(
+            eq("department.created"),
+            eq("department"),
+            eq(String.valueOf(createdId)),
+            argThat(details -> "Engineering".equals(details.get("name"))));
+  }
+
+  /** A refused mutation must not leave an audit row claiming it happened. */
+  @Test
+  void auditsNothingWhenTheCallerIsRefused() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/departments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Engineering\"}")
+                .with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isForbidden());
+
+    verify(audit, never()).record(anyString(), anyString(), anyString(), any());
   }
 
   /**
