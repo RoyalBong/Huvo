@@ -2,6 +2,8 @@ package com.huvo.identity.employee;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -179,6 +181,113 @@ class EmployeeApiTest {
         .andExpect(jsonPath("$.error").value("METHOD_NOT_ALLOWED"))
         .andExpect(jsonPath("$.path").value("/api/employees/1"))
         .andExpect(jsonPath("$.timestamp").exists());
+  }
+
+  /**
+   * Headcount is an HR duty (Section 4.1). A MANAGER runs a team's attendance and tasks; they do
+   * not edit or delete employee records, so the token must be refused before the handler runs.
+   */
+  @Test
+  void refusesToCreateAnEmployeeWithAManagerToken() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/employees")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Asha Rao\",\"departmentId\":\"3\",\"salary\":75000.0}")
+                .with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.status").value(403))
+        .andExpect(jsonPath("$.error").value("FORBIDDEN"))
+        .andExpect(jsonPath("$.path").value("/api/employees"));
+
+    assertThat(repository.count()).isZero();
+    verify(eventPublisher, never()).publishEmployeeCreated(anyLong());
+  }
+
+  @Test
+  void refusesToUpdateAnEmployeeWithAManagerToken() throws Exception {
+    Employee saved = repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
+
+    mockMvc
+        .perform(
+            put("/api/employees/" + saved.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Asha Rao Jr\",\"salary\":80000.0}")
+                .with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+
+    // The record is untouched, not merely reported as refused.
+    assertThat(repository.findById(saved.getId()).orElseThrow().getName()).isEqualTo("Asha Rao");
+    verify(eventPublisher, never()).publishEmployeeUpdated(anyLong());
+  }
+
+  @Test
+  void refusesToDeleteAnEmployeeWithAManagerToken() throws Exception {
+    Employee saved = repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
+
+    mockMvc
+        .perform(
+            delete("/api/employees/" + saved.getId()).with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+
+    assertThat(repository.existsById(saved.getId())).isTrue();
+    verify(eventPublisher, never()).publishEmployeeDeleted(anyLong());
+  }
+
+  /** A plain employee has even less authority than a manager, on every mutating endpoint. */
+  @Test
+  void refusesEveryEmployeeMutationToAnEmployeeToken() throws Exception {
+    RequestPostProcessor asEmployee = BearerTokens.forRole(tokens, "EMPLOYEE");
+
+    mockMvc
+        .perform(
+            post("/api/employees")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Asha Rao\",\"salary\":1.0}")
+                .with(asEmployee))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(
+            put("/api/employees/4242")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Asha Rao\",\"salary\":1.0}")
+                .with(asEmployee))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(delete("/api/employees/4242").with(asEmployee))
+        .andExpect(status().isForbidden());
+  }
+
+  /** HR is the non-ADMIN half of {@code hasAnyRole('ADMIN','HR')}, so it must be let through. */
+  @Test
+  void allowsAnHrTokenToCreateAnEmployee() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/employees")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Asha Rao\",\"departmentId\":\"3\",\"salary\":75000.0}")
+                .with(BearerTokens.forRole(tokens, "HR")))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.name").value("Asha Rao"));
+  }
+
+  /**
+   * Reads are deliberately still open to any authenticated role while the directory-scope question
+   * is pending, so pin that behaviour here - if the endpoints get scoped later, this test is the
+   * reminder to update it deliberately.
+   */
+  @Test
+  void stillLetsAnEmployeeTokenReadTheDirectory() throws Exception {
+    repository.save(new Employee(null, "Asha Rao", "3", 75000.0));
+
+    mockMvc
+        .perform(get("/api/employees").with(BearerTokens.forRole(tokens, "EMPLOYEE")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(1));
   }
 
   @Test

@@ -2,6 +2,8 @@ package com.huvo.identity.department;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -159,5 +161,113 @@ class DepartmentApiTest {
         .perform(delete("/api/departments/" + saved.getId()).with(auth))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.error").value("NOT_FOUND"));
+  }
+
+  /**
+   * The org structure is HR-maintained (Section 4.1). A MANAGER can see the tree but not reshape
+   * it, so the token must be refused before the handler runs.
+   */
+  @Test
+  void refusesToCreateADepartmentWithAManagerToken() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/departments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Engineering\",\"location\":\"Bengaluru\"}")
+                .with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.status").value(403))
+        .andExpect(jsonPath("$.error").value("FORBIDDEN"))
+        .andExpect(jsonPath("$.path").value("/api/departments"));
+
+    assertThat(repository.count()).isZero();
+    verify(eventPublisher, never()).publishDepartmentCreated(anyLong());
+  }
+
+  @Test
+  void refusesToUpdateADepartmentWithAManagerToken() throws Exception {
+    Department saved = repository.save(new Department(null, "Engineering", "Bengaluru"));
+
+    mockMvc
+        .perform(
+            put("/api/departments/" + saved.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Platform Engineering\"}")
+                .with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+
+    // The row is untouched, not merely reported as refused.
+    assertThat(repository.findById(saved.getId()).orElseThrow().getName()).isEqualTo("Engineering");
+    verify(eventPublisher, never()).publishDepartmentUpdated(anyLong());
+  }
+
+  @Test
+  void refusesToDeleteADepartmentWithAManagerToken() throws Exception {
+    Department saved = repository.save(new Department(null, "Engineering", "Bengaluru"));
+
+    mockMvc
+        .perform(
+            delete("/api/departments/" + saved.getId())
+                .with(BearerTokens.forRole(tokens, "MANAGER")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+
+    assertThat(repository.existsById(saved.getId())).isTrue();
+    verify(eventPublisher, never()).publishDepartmentDeleted(anyLong());
+  }
+
+  /** A plain employee has even less authority than a manager, on every mutating endpoint. */
+  @Test
+  void refusesEveryDepartmentMutationToAnEmployeeToken() throws Exception {
+    RequestPostProcessor asEmployee = BearerTokens.forRole(tokens, "EMPLOYEE");
+
+    mockMvc
+        .perform(
+            post("/api/departments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Engineering\"}")
+                .with(asEmployee))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(
+            put("/api/departments/4242")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Platform Engineering\"}")
+                .with(asEmployee))
+        .andExpect(status().isForbidden());
+
+    mockMvc
+        .perform(delete("/api/departments/4242").with(asEmployee))
+        .andExpect(status().isForbidden());
+  }
+
+  /** HR is the non-ADMIN half of {@code hasAnyRole('ADMIN','HR')}, so it must be let through. */
+  @Test
+  void allowsAnHrTokenToCreateADepartment() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/departments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Engineering\",\"location\":\"Bengaluru\"}")
+                .with(BearerTokens.forRole(tokens, "HR")))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.name").value("Engineering"));
+  }
+
+  /**
+   * Reads are deliberately still open to any authenticated role while the directory-scope question
+   * is pending - the frontend needs the full list for pickers. If the endpoints get scoped later,
+   * this test is the reminder to update it deliberately.
+   */
+  @Test
+  void stillLetsAnEmployeeTokenReadTheDepartments() throws Exception {
+    repository.save(new Department(null, "Engineering", "Bengaluru"));
+
+    mockMvc
+        .perform(get("/api/departments").with(BearerTokens.forRole(tokens, "EMPLOYEE")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(1));
   }
 }
