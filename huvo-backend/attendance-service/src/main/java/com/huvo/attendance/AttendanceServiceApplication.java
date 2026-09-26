@@ -2,6 +2,7 @@ package com.huvo.attendance;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Huvo attendance service (Huvo_Backend_Context.md Sections 3.1, 5).
@@ -21,6 +22,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * </ul>
  */
 @SpringBootApplication
+@EnableScheduling
 public class AttendanceServiceApplication {
 
   public static void main(String[] args) {

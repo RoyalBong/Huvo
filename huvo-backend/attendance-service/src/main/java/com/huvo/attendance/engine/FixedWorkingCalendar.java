@@ -50,6 +50,11 @@ public final class FixedWorkingCalendar implements WorkingCalendar {
     return isWorkingWeekday(date.getDayOfWeek());
   }
 
+  /** The configured weekdays, for callers that want the set rather than a per-date answer. */
+  public Set<DayOfWeek> workingDays() {
+    return workingDays;
+  }
+
   @Override
   public boolean isWorkingWeekday(DayOfWeek dayOfWeek) {
     return workingDays.contains(dayOfWeek);

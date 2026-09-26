@@ -1,0 +1,24 @@
+<configuration>
+    <!--
+      Container-friendly logging (Huvo_Backend_Context.md §8.1): stdout only.
+      systemd captures it and the CloudWatch agent ships it off the instance.
+      TODO(phase-7): switch the encoder to logstash-logback-encoder for JSON output
+      once the dependency is added to the build.
+    -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] %logger{40} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!--
+      The lateness engine is the product's highest-value logic (§1.1). DEBUG shows
+      each decision as it is made, which is what you want when someone disputes
+      an attendance mark; it is off by default because it is per-login.
+    -->
+    <logger name="com.huvo.attendance" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

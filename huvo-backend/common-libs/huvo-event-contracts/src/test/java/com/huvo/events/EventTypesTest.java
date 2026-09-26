@@ -55,6 +55,85 @@ class EventTypesTest {
   }
 
   @Test
+  void everyAttendanceKeySitsUnderTheAttendancePrefix() {
+    assertThat(EventTypes.ATTENDANCE_LATE_DETECTED).startsWith("attendance.");
+    assertThat(EventTypes.ATTENDANCE_AUTO_ABSENT_TRIGGERED).startsWith("attendance.");
+  }
+
+  @Test
+  void theAttendanceWildcardMatchesBothAttendanceKeys() {
+    for (String key :
+        new String[] {
+          EventTypes.ATTENDANCE_LATE_DETECTED, EventTypes.ATTENDANCE_AUTO_ABSENT_TRIGGERED
+        }) {
+      assertThat(matches(EventTypes.ATTENDANCE_ALL, key)).isTrue();
+    }
+  }
+
+  @Test
+  void theAttendancePatternDoesNotLeakOtherDomains() {
+    // notify-service binds attendance.#, so it must not receive login or employee traffic.
+    assertThat(matches(EventTypes.ATTENDANCE_ALL, EventTypes.USER_LOGIN_SUCCESS)).isFalse();
+    assertThat(matches(EventTypes.ATTENDANCE_ALL, EventTypes.EMPLOYEE_CREATED)).isFalse();
+  }
+
+  @Test
+  void theLateDetectedPayloadCarriesTheMeasurementNotTheRecord() {
+    EventTypes.LateDetectedPayload payload =
+        new EventTypes.LateDetectedPayload(42L, java.time.LocalDate.of(2026, 9, 28), 47, 2, 1);
+
+    assertThat(payload.employeeId()).isEqualTo(42L);
+    assertThat(payload.lateMinutes()).isEqualTo(47);
+    assertThat(payload.streak()).isEqualTo(2);
+    assertThat(payload.lateDaysCount()).isEqualTo(1);
+  }
+
+  @Test
+  void theStreakIsNamedAsTheTriggerWhenBothConditionsHold() {
+    // Both rules can fire on the same day; the harder-to-reach one explains the escalation.
+    assertThat(EventTypes.AutoAbsentPayload.triggerFor(3, 2))
+        .isEqualTo(EventTypes.AutoAbsentPayload.TRIGGER_STREAK);
+  }
+
+  @Test
+  void theWeeklyFrequencyIsNamedWhenTheStreakDidNotReachThree() {
+    assertThat(EventTypes.AutoAbsentPayload.triggerFor(2, 2))
+        .isEqualTo(EventTypes.AutoAbsentPayload.TRIGGER_WEEKLY_FREQUENCY);
+  }
+
+  @Test
+  void theAutoAbsentPayloadCarriesBothCountsSoAReceiverCanRecheck() {
+    EventTypes.AutoAbsentPayload payload =
+        new EventTypes.AutoAbsentPayload(
+            42L,
+            java.time.LocalDate.of(2026, 9, 28),
+            3,
+            2,
+            EventTypes.AutoAbsentPayload.triggerFor(3, 2));
+
+    assertThat(payload.triggeredBy()).isEqualTo(EventTypes.AutoAbsentPayload.TRIGGER_STREAK);
+    assertThat(payload.streak()).isEqualTo(3);
+    assertThat(payload.lateDaysCount()).isEqualTo(2);
+  }
+
+  @Test
+  void noAttendancePayloadCarriesCredentialsOrTokens() {
+    var lateFields =
+        java.util.Arrays.stream(EventTypes.LateDetectedPayload.class.getRecordComponents())
+            .map(java.lang.reflect.RecordComponent::getName)
+            .toList();
+    var absentFields =
+        java.util.Arrays.stream(EventTypes.AutoAbsentPayload.class.getRecordComponents())
+            .map(java.lang.reflect.RecordComponent::getName)
+            .toList();
+
+    assertThat(lateFields)
+        .containsExactlyInAnyOrder("employeeId", "date", "lateMinutes", "streak", "lateDaysCount");
+    assertThat(absentFields)
+        .containsExactlyInAnyOrder("employeeId", "date", "streak", "lateDaysCount", "triggeredBy");
+  }
+
+  @Test
   void everyDeclaredKeyIsUnique() {
     String[] all = {
       EventTypes.EMPLOYEE_CREATED,
@@ -63,7 +142,9 @@ class EventTypesTest {
       EventTypes.DEPARTMENT_CREATED,
       EventTypes.DEPARTMENT_UPDATED,
       EventTypes.DEPARTMENT_DELETED,
-      EventTypes.USER_LOGIN_SUCCESS
+      EventTypes.USER_LOGIN_SUCCESS,
+      EventTypes.ATTENDANCE_LATE_DETECTED,
+      EventTypes.ATTENDANCE_AUTO_ABSENT_TRIGGERED
     };
 
     assertThat(all).doesNotHaveDuplicates();

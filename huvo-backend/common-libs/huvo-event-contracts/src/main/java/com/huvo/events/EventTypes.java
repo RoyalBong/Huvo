@@ -37,6 +37,13 @@ public final class EventTypes {
   public static final String USER_LOGIN_SUCCESS = "user.login.success";
 
   /**
+   * The exchange identity-service publishes on. attendance-service declares it too, so it can bind
+   * its own queue whether or not identity-service has started yet - a consumer should not depend on
+   * a producer's startup order.
+   */
+  public static final String IDENTITY_EXCHANGE = "identity.exchange";
+
+  /**
    * The fact that a login succeeded, for the attendance lateness engine (Section 5.2).
    *
    * <p>Ids and timestamps only. Never credentials, never a token: this crosses a broker that other
@@ -59,4 +66,67 @@ public final class EventTypes {
    */
   public record LoginPayload(
       Long userId, Long employeeId, String role, OffsetDateTime loginTimestamp, String sourceIp) {}
+
+  // --- attendance domain: attendance-service -> notify, payroll (future) ---
+
+  public static final String ATTENDANCE_LATE_DETECTED = "attendance.late.detected";
+  public static final String ATTENDANCE_AUTO_ABSENT_TRIGGERED = "attendance.autoAbsent.triggered";
+
+  /** Binding pattern for the full attendance stream. */
+  public static final String ATTENDANCE_ALL = "attendance.#";
+
+  /**
+   * A login was late against the employee's shift (Section 5.2 step 5b). notify-service sends the
+   * late-warning email immediately, unbatched.
+   *
+   * <p>Ids and the measurement, never a copy of the attendance row: a consumer needs to know who
+   * and by how much.
+   *
+   * @param employeeId whose day was late
+   * @param date the calendar day, from the login timestamp
+   * @param lateMinutes minutes past the grace period
+   * @param streak consecutive late scheduled working days ending on this one
+   * @param lateDaysCount late days so far this week
+   */
+  public record LateDetectedPayload(
+      Long employeeId, java.time.LocalDate date, int lateMinutes, int streak, int lateDaysCount) {}
+
+  /**
+   * The streak or weekly-frequency rule escalated the day to ABSENT (Section 5.2 step 6).
+   * notify-service emails the employee and the manager/HR.
+   *
+   * @param employeeId whose day was escalated
+   * @param date the calendar day
+   * @param streak the streak that triggered, or 0 when the weekly frequency rule did
+   * @param lateDaysCount the weekly count that triggered, or 0 when the streak did
+   * @param triggeredBy which rule fired
+   */
+  public record AutoAbsentPayload(
+      Long employeeId,
+      java.time.LocalDate date,
+      int streak,
+      int lateDaysCount,
+      String triggeredBy) {
+
+    /** Three consecutive late scheduled working days. */
+    public static final String TRIGGER_STREAK = "STREAK";
+
+    /** Two or more late days in the same week. */
+    public static final String TRIGGER_WEEKLY_FREQUENCY = "WEEKLY_FREQUENCY";
+
+    /**
+     * Which rule fired when both conditions hold on the same day.
+     *
+     * <p>Both can be true at once, and naming the one that actually explains the escalation is more
+     * useful to a support query than "both". The streak is reported because it is the harder
+     * condition to reach, so it is the more surprising explanation.
+     *
+     * @param streak the streak reached
+     * @param lateDaysCount the weekly count reached
+     * @return the trigger to publish
+     */
+    public static String triggerFor(int streak, int lateDaysCount) {
+      return streak >= 3 ? TRIGGER_STREAK : TRIGGER_WEEKLY_FREQUENCY;
+    }
+  }
 }
