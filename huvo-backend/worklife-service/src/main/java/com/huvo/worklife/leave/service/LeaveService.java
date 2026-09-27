@@ -13,6 +13,7 @@ import com.huvo.audit.AuditEntry;
 import com.huvo.events.EventTypes;
 import com.huvo.security.HuvoPrincipal;
 import com.huvo.worklife.exception.BusinessRuleException;
+import com.huvo.worklife.exception.LeaveConflictException;
 import com.huvo.worklife.exception.NotFoundException;
 import com.huvo.worklife.leave.LeaveStatus;
 import com.huvo.worklife.leave.entity.LeaveRequest;
@@ -64,6 +65,7 @@ public class LeaveService {
       throw new BusinessRuleException("The last day of leave cannot be before the first day");
     }
     Long employeeId = requireEmployeeId(principal);
+    requireNoOverlap(employeeId, from, to);
 
     LeaveRequest request = new LeaveRequest();
     request.setEmployeeId(employeeId);
@@ -171,6 +173,35 @@ public class LeaveService {
       throw new BusinessRuleException("Your account is not linked to an employee record");
     }
     return employeeId;
+  }
+
+  /**
+   * Refuses a range that overlaps leave the employee already holds or is already asking for.
+   *
+   * <p>Both PENDING and APPROVED occupy the days. Checking only APPROVED would let one employee
+   * hold several live applications for the same week, and an approver could then approve two of
+   * them - publishing two {@code leave.approved} events for days attendance has already marked
+   * {@code ON_LEAVE}, and counting the same leave twice against payroll. REJECTED is deliberately
+   * not a conflict: a refused request frees its dates, and re-applying for them is the normal next
+   * step.
+   *
+   * <p>Both endpoints are inclusive, so a request starting on the day an existing one ends does
+   * conflict. That is not a stylistic choice - it follows from the same inclusivity the {@code
+   * leave.approved} contract uses, and the two have to agree or the boundary will read one way when
+   * booking and the other way when applying.
+   */
+  private void requireNoOverlap(Long employeeId, LocalDate from, LocalDate to) {
+    List<LeaveRequest> overlapping =
+        requests.findOverlapping(
+            employeeId, List.of(LeaveStatus.PENDING, LeaveStatus.APPROVED), from, to);
+    if (overlapping.isEmpty()) {
+      return;
+    }
+    // The earliest one: the most likely to be the one the employee forgot about, and the one whose
+    // dates are most useful to show them.
+    LeaveRequest conflict = overlapping.get(0);
+    throw new LeaveConflictException(
+        conflict.getId(), conflict.getStatus(), conflict.getFromDate(), conflict.getToDate());
   }
 
   /**

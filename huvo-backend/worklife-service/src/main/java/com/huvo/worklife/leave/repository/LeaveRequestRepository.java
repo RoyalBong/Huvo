@@ -19,32 +19,32 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
   List<LeaveRequest> findByStatusOrderByCreatedAtAsc(LeaveStatus status);
 
   /**
-   * Whether the employee already has leave of this status covering a given day.
+   * Existing requests whose range overlaps {@code from..to} for this employee.
    *
-   * <p>Stops a second request overlapping one already approved, which would otherwise publish two
-   * {@code leave.approved} events covering the same day and have attendance mark it {@code
-   * ON_LEAVE} twice for one day of leave.
-   *
-   * <p>Written as an explicit overlap predicate rather than a derived query: {@code from <= :date
-   * AND to >= :date} is range containment, and the derived-query spelling of it is easy to get
-   * subtly wrong in a way that compiles.
+   * <p>Range-vs-range containment, {@code existing.from <= to AND existing.to >= from}, and both
+   * endpoints inclusive - which is why a request starting on the day an existing one ends is a
+   * conflict and one starting the day after is not. That edge is the whole reason this is written
+   * out explicitly rather than as a derived query, where the inclusive/exclusive spelling is easy
+   * to get subtly wrong in a way that still compiles.
    *
    * @param employeeId whose leave
-   * @param status the status to consider
-   * @param date the day in question
-   * @return true when an existing request covers that day
+   * @param statuses the statuses that count as occupying the days, normally PENDING and APPROVED
+   * @param from the first day wanted, inclusive
+   * @param to the last day wanted, inclusive
+   * @return the overlapping requests, earliest first; empty when the range is free
    */
   @Query(
       """
-      select case when count(r) > 0 then true else false end
-      from LeaveRequest r
+      select r from LeaveRequest r
       where r.employeeId = :employeeId
-        and r.status = :status
-        and r.fromDate <= :date
-        and r.toDate >= :date
+        and r.status in :statuses
+        and r.fromDate <= :to
+        and r.toDate >= :from
+      order by r.fromDate asc
       """)
-  boolean existsCovering(
+  List<LeaveRequest> findOverlapping(
       @Param("employeeId") Long employeeId,
-      @Param("status") LeaveStatus status,
-      @Param("date") java.time.LocalDate date);
+      @Param("statuses") List<LeaveStatus> statuses,
+      @Param("from") java.time.LocalDate from,
+      @Param("to") java.time.LocalDate to);
 }
