@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +21,6 @@ import com.huvo.worklife.leave.entity.LeaveRequest;
 import com.huvo.worklife.leave.repository.LeaveRequestRepository;
 import com.huvo.worklife.messaging.WorklifeEventPublisher;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -38,7 +38,6 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class LeaveService {
 
   private static final String SERVICE = "worklife-service";
@@ -46,6 +45,22 @@ public class LeaveService {
   private final LeaveRequestRepository requests;
   private final WorklifeEventPublisher publisher;
   private final AuditClient audit;
+
+  /**
+   * Resolves the optional audit client at construction.
+   *
+   * <p>AuditConfig returns null when no table is configured, and a {@code @Bean} method returning
+   * null registers a NullBean that Spring will not autowire - so a direct AuditClient field makes
+   * the context fail to start. See Huo_Backend_Context.md Section 9.1.
+   */
+  public LeaveService(
+      LeaveRequestRepository requests,
+      WorklifeEventPublisher publisher,
+      ObjectProvider<AuditClient> auditClientProvider) {
+    this.requests = requests;
+    this.publisher = publisher;
+    this.audit = auditClientProvider.getIfAvailable();
+  }
 
   /**
    * Records a new leave application and tells the approvers.

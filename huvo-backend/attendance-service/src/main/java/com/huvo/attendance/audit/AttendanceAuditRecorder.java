@@ -4,6 +4,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ import com.huvo.security.HuvoPrincipal;
  * <p>The same two-policy shape as identity-service's recorder, for the same reason: whether an
  * audit write should fail the operation is a per-call decision. {@link #record} is best-effort for
  * the machine-driven paths, where the action is already committed. {@link #recordRequired}
- * propagates, and is what the admin override uses — §5.2 step 8 requires an override to write to
+ * propagates, and is what the admin override uses â€” Â§5.2 step 8 requires an override to write to
  * the audit log and never be a silent overwrite, so an override that cannot be audited must not be
  * reported as done.
  */
@@ -37,8 +38,12 @@ public class AttendanceAuditRecorder {
    * @param auditClient the shared client, or null when auditing is not configured in this
    *     environment
    */
-  public AttendanceAuditRecorder(AuditClient auditClient) {
-    this.auditClient = auditClient;
+  public AttendanceAuditRecorder(ObjectProvider<AuditClient> auditClientProvider) {
+    // Resolved through the provider rather than injected directly: AuditConfig returns null when no
+    // table is configured, and a @Bean method that returns null registers a NullBean that Spring
+    // then refuses to autowire - so a direct AuditClient parameter makes the context fail to start.
+    // See Huvo_Backend_Context.md Section 9.1.
+    this.auditClient = auditClientProvider.getIfAvailable();
   }
 
   /**
@@ -60,7 +65,7 @@ public class AttendanceAuditRecorder {
 
   /**
    * Records an action and propagates a failure, for callers whose audit row is part of the
-   * operation rather than an observation of it — the §5.2 step 8 manual override.
+   * operation rather than an observation of it â€” the Â§5.2 step 8 manual override.
    *
    * @param action the verb
    * @param entity the entity type

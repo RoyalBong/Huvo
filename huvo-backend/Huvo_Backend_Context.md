@@ -347,6 +347,25 @@ WantedBy=multi-user.target
 - Tag every uploaded JAR with the git SHA in its S3 key — never overwrite a single `latest.jar` — so rollback is re-running the SSM command against the previous key.
 - Nginx config is a versioned file in the repo, deployed the same way (SSM Run Command copies it and reloads Nginx) — never hand-edited on the box.
 
+### 9.1 Context-Start Verification (Required)
+
+Every service **must** have at least one test that starts the **full** application context with the web layer forced on, overriding `spring.main.lazy-initialization=false` for that test only. A service without one is not deployable, whatever else it has tested.
+
+This exists because Section 8.3 sets `spring.main.lazy-initialization=true` for a real and correct reason — it cuts startup memory and time across five JVMs on one `t4g.medium` — and that same setting hides a whole class of defect from the test suite. Under lazy initialisation, a `@Configuration` class is not instantiated until something asks for one of its beans. A `@SpringBootTest` that exercises a service, a repository or a listener never touches `SecurityConfig`, so a `SecurityConfig` that injects a bean nobody defines is never created, never fails, and never appears in any report.
+
+The precedent is real and it was not a Cline oversight — it followed directly from the lazy-init advice in Section 8.3. `identity-service` declared its `HuvoTokenService` bean. `attendance-service`, `worklife-service` and `notify-service` all injected one into their `SecurityConfig` and none of them defined it, while `huvo-security-lib` is framework-free by design and supplies nothing. Every test in all three services passed — 90 attendance tests, 96 worklife tests — and **all three would have crash-looped on the first `systemctl restart`**, with `NoSuchBeanDefinitionException` and a restart loop, after deploying successfully through CI.
+
+Keep lazy initialisation on. The memory benefit is real and the decision stands. The fix is not to reverse it but to spend one test making its risk visible.
+
+Practically:
+- at least one `@SpringBootTest` per service with `properties = "spring.main.lazy-initialization=false"`, asserting the context loads and the security-critical beans exist;
+- the assertions should be **on the injected beans**, not merely on "the context started", since a test that autowires nothing proves the beans were never going to be created;
+- it needs no MySQL, RabbitMQ, DynamoDB or S3 — the point is bean wiring, so the test profile supplies throwaway credentials exactly as the other tests do;
+- keep it as a *single* focused test rather than a per-class habit, so the cost is one extra context per service rather than one per test class;
+- any service that injects a bean a `@Bean`-less configuration depends on needs this before it deploys, not after.
+
+The two Required rules in this document — §7.1 for event contracts and this one for startup wiring — exist for the same reason and the same reason is worth repeating: **a defect invisible from inside one place is not a defect the build will catch for you.** The first two contract mismatches and the first three missing-bean bugs were all found by asking "what would this look like from the other side", never by reading the code that was already there.
+
 ---
 
 ## 10. Coding Conventions

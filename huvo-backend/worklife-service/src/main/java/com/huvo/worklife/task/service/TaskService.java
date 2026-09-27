@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,7 +24,6 @@ import com.huvo.worklife.task.entity.TaskSubmission;
 import com.huvo.worklife.task.repository.TaskRepository;
 import com.huvo.worklife.task.repository.TaskSubmissionRepository;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -41,7 +41,6 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class TaskService {
 
   private static final String SERVICE = "worklife-service";
@@ -50,6 +49,24 @@ public class TaskService {
   private final TaskSubmissionRepository submissions;
   private final WorklifeEventPublisher publisher;
   private final AuditClient audit;
+
+  /**
+   * Resolves the optional audit client at construction.
+   *
+   * <p>AuditConfig returns null when no table is configured, and a {@code @Bean} method returning
+   * null registers a NullBean that Spring will not autowire - so a direct AuditClient field makes
+   * the context fail to start. See Huo_Backend_Context.md Section 9.1.
+   */
+  public TaskService(
+      TaskRepository tasks,
+      TaskSubmissionRepository submissions,
+      WorklifeEventPublisher publisher,
+      ObjectProvider<AuditClient> auditClientProvider) {
+    this.tasks = tasks;
+    this.submissions = submissions;
+    this.publisher = publisher;
+    this.audit = auditClientProvider.getIfAvailable();
+  }
 
   /**
    * Assigns a task, enforcing the Section 6.2 department rule.
