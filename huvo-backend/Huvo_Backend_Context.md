@@ -288,10 +288,20 @@ When the consumer does not exist yet, the publisher test asserts the envelope an
 ### 8.1 Local Development (No Docker)
 Every developer runs the real dependencies natively — no containers, anywhere:
 - **MySQL:** install natively (Homebrew, `apt`, or the MySQL installer on Windows). One local MySQL instance, 4 schemas, matching Section 3.4 — use the same Flyway migrations that run in prod.
-- **RabbitMQ:** install natively via the platform's package manager and run it as a local service.
+- **RabbitMQ:** install natively via the platform's package manager and run it as a local service. On Windows this needs three non-obvious steps — see the note below.
 - **DynamoDB & S3:** do **not** emulate these locally (no DynamoDB Local, no MinIO — those typically run via Docker and add behavioral drift). Instead, provision a small set of **real, low-cost AWS dev resources** (`huvo-dev-notifications`, `huvo-dev-chat-messages`, `huvo-dev-audit-log` DynamoDB tables on-demand; `huvo-dev-assets` S3 bucket) under a dedicated dev IAM user, used via every developer's local `AWS_PROFILE`. Cost at this scale is negligible.
 - **Running services:** each of the 5 services is started individually — `mvn spring-boot:run -Dspring-boot.run.profiles=local` (or the IDE equivalent) — each bound to its port from Section 3.2. Nginx isn't required for day-to-day local dev (call each service directly); install it natively too if you want full routing parity before a deploy.
 - **Local config:** a gitignored `application-local.yml` per service pointing at local MySQL/RabbitMQ and the `huvo-dev-*` AWS resources — never real production credentials.
+
+#### 8.1.1 RabbitMQ on Windows — Setup Notes
+
+Not a rule, just the three things that cost real time on the first attempt. Linux and macOS need none of this.
+
+1. **Install Erlang 27, not whatever `winget` offers.** `winget install Erlang.ErlangOTP` installs OTP 29, and **RabbitMQ 4.3.6 will not boot against it** — every feature flag fails with `{error, beam_disasm, ...}` and the node never reaches "Server startup complete". This is easy to miss because Erlang installs cleanly and RabbitMQ installs cleanly; the failure only appears at boot. Use **OTP 27.3.4.18** from the official Erlang GitHub release. `winget` will not downgrade an existing install, so uninstall first.
+2. **Redirect the data and log directories.** RabbitMQ writes to `db/` under `C:\Program Files\...`, which a non-elevated shell cannot create, failing with `failed_to_create_feature_flags_file_directory` or `Failed to create PID file ... permission denied`. Set `RABBITMQ_MNESIA_BASE`, `RABBITMQ_LOG_BASE` and `RABBITMQ_PID_FILE` to a writable path (a scratch dir is fine) and it starts without admin rights.
+3. **Run the server directly rather than via the Windows service.** The installer registers a `RabbitMQ` service, but `Start-Service` needs elevation a normal developer shell does not have. `rabbitmq-server.bat -detached` from `sbin/` needs none, and is the same broker the service would have started.
+
+Confirm it with `rabbitmqctl.bat status` — "Server startup complete" in the log, and a `guest` user with administrator rights on vhost `/` is already present, which is what every service's default `RABBITMQ_USERNAME`/`PASSWORD` expect.
 
 ### 8.2 AWS Deployment Architecture (Deploy-Ready, CloudFormation to Follow)
 - **Backend EC2:** `t4g.medium` (ARM/Graviton — roughly 15–20% cheaper on-demand than the equivalent `t3.medium`, and Corretto/Temurin run fine on ARM). Runs Nginx (path-based routing) and the 5 systemd-managed services plus RabbitMQ.
