@@ -257,4 +257,29 @@ public final class EventTypes {
       String title,
       java.time.OffsetDateTime deadline,
       java.time.OffsetDateTime submittedAt) {}
+
+  // --- payroll domain: payroll-service -> notify ---
+
+  public static final String PAYROLL_GENERATED = "payroll.generated";
+
+  /** Binding pattern for the full payroll stream. */
+  public static final String PAYROLL_ALL = "payroll.#";
+
+  /** The exchange payroll-service publishes on. */
+  public static final String PAYROLL_EXCHANGE = "payroll.exchange";
+
+  /**
+   * A payroll run produced payslips (Section 7).
+   *
+   * <p>One event per <em>run</em>, not per payslip. A company of 200 employees generating 200
+   * separate events would be 200 notifications to make sense of; the run is the thing an HR admin
+   * acts on, and an employee who wants their own payslip reads their feed.
+   *
+   * @param runId the payroll run
+   * @param period the month, as the first day of that month
+   * @param payslipCount how many payslips the run produced
+   * @param generatedBy the user id of whoever triggered it, or null for a scheduled run
+   */
+  public record PayrollGeneratedPayload(
+      Long runId, java.time.LocalDate period, int payslipCount, String generatedBy) {}
 }
