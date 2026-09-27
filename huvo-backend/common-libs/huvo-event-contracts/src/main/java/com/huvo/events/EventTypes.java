@@ -132,6 +132,7 @@ public final class EventTypes {
 
   // --- leave domain: worklife-service -> notify, attendance ---
 
+  public static final String LEAVE_APPLIED = "leave.applied";
   public static final String LEAVE_APPROVED = "leave.approved";
   public static final String LEAVE_REJECTED = "leave.rejected";
 
@@ -140,6 +141,21 @@ public final class EventTypes {
 
   /** The exchange worklife-service publishes leave on. */
   public static final String LEAVE_EXCHANGE = "leave.exchange";
+
+  /**
+   * A leave request was submitted (Section 7). notify-service tells the approver.
+   *
+   * <p>Same shape as {@link LeaveApprovedPayload} and deliberately so: an approver and the
+   * attendance consumer want the same facts, and one shape means a future addition is a coordinated
+   * change rather than two drifting ones.
+   *
+   * @param employeeId whose leave it is
+   * @param from the first day requested, inclusive
+   * @param to the last day requested, inclusive
+   * @param leaveId the request id
+   */
+  public record LeaveAppliedPayload(
+      Long employeeId, java.time.LocalDate from, java.time.LocalDate to, Long leaveId) {}
 
   /**
    * Leave was approved (Section 7). attendance-service consumes this to mark the covered days
@@ -156,4 +172,80 @@ public final class EventTypes {
    */
   public record LeaveApprovedPayload(
       Long employeeId, java.time.LocalDate from, java.time.LocalDate to, Long leaveId) {}
+
+  /**
+   * A leave request was rejected. notify-service tells the requester.
+   *
+   * <p>Carries the same range as the approval, so a consumer can dismiss the right days, plus the
+   * approver's reason - which is the one thing the requester needs and the approver wants recorded.
+   *
+   * @param employeeId whose leave it is
+   * @param from the first day requested, inclusive
+   * @param to the last day requested, inclusive
+   * @param leaveId the request id
+   * @param reason why it was rejected
+   */
+  public record LeaveRejectedPayload(
+      Long employeeId,
+      java.time.LocalDate from,
+      java.time.LocalDate to,
+      Long leaveId,
+      String reason) {}
+
+  // --- task domain: worklife-service -> notify ---
+
+  public static final String TASK_ASSIGNED = "task.assigned";
+  public static final String TASK_OVERDUE = "task.overdue";
+  public static final String TASK_SUBMITTED_LATE = "task.submitted.late";
+
+  /** Binding pattern for the full task stream. */
+  public static final String TASK_ALL = "task.#";
+
+  /** The exchange worklife-service publishes tasks on. */
+  public static final String TASK_EXCHANGE = "task.exchange";
+
+  /**
+   * A task was assigned to an employee (Section 6.2). notify-service tells them.
+   *
+   * @param taskId the task
+   * @param employeeId the assignee
+   * @param assignedByUserId the assigner's user id, so the notification can name a person
+   * @param title the task title, for a readable notification
+   * @param deadline when it is due, or null for an open-ended task
+   */
+  public record TaskAssignedPayload(
+      Long taskId,
+      Long employeeId,
+      String assignedByUserId,
+      String title,
+      java.time.OffsetDateTime deadline) {}
+
+  /**
+   * A task passed its deadline without being submitted (Section 6.2). notify-service tells the
+   * assignee and their manager.
+   *
+   * @param taskId the task
+   * @param employeeId the assignee
+   * @param title the task title
+   * @param deadline when it was due
+   */
+  public record TaskOverduePayload(
+      Long taskId, Long employeeId, String title, java.time.OffsetDateTime deadline) {}
+
+  /**
+   * A task was submitted after its deadline (Section 6.1's {@code LATE_SUBMITTED} flag). The
+   * submission itself is a normal success - this only tells the manager it came in late.
+   *
+   * @param taskId the task
+   * @param employeeId the assignee
+   * @param title the task title
+   * @param deadline when it was due
+   * @param submittedAt when it was actually submitted
+   */
+  public record TaskSubmittedLatePayload(
+      Long taskId,
+      Long employeeId,
+      String title,
+      java.time.OffsetDateTime deadline,
+      java.time.OffsetDateTime submittedAt) {}
 }

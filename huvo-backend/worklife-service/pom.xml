@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.5.5</version>
+    <relativePath/> <!-- lookup parent from repository -->
+  </parent>
+
+  <!--
+    Huvo_Backend_Context.md Sections 3.1, 3.2, 6, 12: worklife-service owns the task, leave and
+    onboarding domains. Grouped together because both are manager/employee-initiated workflows of
+    steady volume with no shift-start spike, and because they already share scheduler
+    infrastructure (the deadline sweep and the document-expiry check).
+
+    Independently buildable: not a module of a shared reactor (Section 11), so this service's build
+    failure never blocks another service's deploy.
+  -->
+  <groupId>com.huvo</groupId>
+  <artifactId>worklife-service</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>worklife-service</name>
+  <description>Huvo worklife service - task, leave and onboarding domains</description>
+
+  <properties>
+    <java.version>17</java.version>
+    <spotless.version>3.10.3</spotless.version>
+    <!--
+      The Spring Boot BOM manages the DynamoDB client (via huvo-audit-client) but not S3, so this
+      one is pinned. Kept in step with the AWS SDK version the BOM already pulls in, so the two do
+      not end up on different SDK generations in the same classpath.
+    -->
+    <aws.sdk.version>2.31.11</aws.sdk.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+
+    <!--
+      Shared modules, wired in from day one (Section 10): huvo-security-lib for JWT validation,
+      huvo-event-contracts for the leave.approved contract attendance-service already consumes and for
+      the task events notify-service will, huvo-audit-client for audit writes. Plain Maven
+      dependencies, not reactor modules, so install them first with
+      `mvn -f common-libs/<module>/pom.xml install`.
+    -->
+    <dependency>
+      <groupId>com.huvo</groupId>
+      <artifactId>huvo-security-lib</artifactId>
+      <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>com.huvo</groupId>
+      <artifactId>huvo-event-contracts</artifactId>
+      <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>com.huvo</groupId>
+      <artifactId>huvo-audit-client</artifactId>
+      <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+
+    <!--
+      S3 pre-signed uploads (Section 6.2): the client uploads straight to S3 and this service only
+      stores the resulting object key. Section 8.1 rules out emulating S3 locally, so the SDK talks
+      to the real dev bucket.
+    -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+      <version>${aws.sdk.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-mysql</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <optional>true</optional>
+    </dependency>
+
+    <!--
+      Tests must run on any agent, without MySQL, RabbitMQ or S3 (Section 9).
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.amqp</groupId>
+      <artifactId>spring-rabbit-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- Section 0: deployable JAR name is huvo-<servicename> -> huvo-worklife-service.jar -->
+    <finalName>huvo-worklife-service</finalName>
+    <plugins>
+      <!--
+        Huvo_Backend_Context.md Section 10: one formatter for every service, enforced by the build.
+        Copies of this block live in each service pom (no shared parent/reactor, Section 11), so keep
+        the version + config in sync.
+      -->
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.version}</version>
+        <configuration>
+          <java>
+            <googleJavaFormat>
+              <version>1.28.0</version>
+              <style>GOOGLE</style>
+            </googleJavaFormat>
+            <removeUnusedImports />
+            <importOrder>
+              <order>java,javax,org,com</order>
+            </importOrder>
+            <trimTrailingWhitespace />
+            <endWithNewline />
+          </java>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>verify</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+          <excludes>
+            <exclude>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+            </exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
