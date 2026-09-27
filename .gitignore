@@ -3,3 +3,7 @@
 node_modules/
 dist/
 
+
+# Erlang/RabbitMQ local artefacts (see Huo_Backend_Context.md Section 8.1.1)erl_crash.dump
+*.ez
+
