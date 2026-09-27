@@ -130,7 +130,7 @@ public class TaskService {
 
     TaskStatus newStatus = TaskTransitions.submit(task.getStatus(), deadlineOf(task), now);
     task.setStatus(newStatus);
-    task.setSubmittedAt(now.toLocalDateTime());
+    task.setSubmittedAt(now.withOffsetSameInstant(Task.STORAGE_ZONE).toLocalDateTime());
     Task saved = tasks.save(task);
 
     TaskSubmission submission = new TaskSubmission();
@@ -139,7 +139,7 @@ public class TaskService {
     submission.setObjectKey(objectKey);
     submission.setOriginalName(originalName);
     submission.setContentType(contentType);
-    submission.setSubmittedAt(now.toLocalDateTime());
+    submission.setSubmittedAt(now.withOffsetSameInstant(Task.STORAGE_ZONE).toLocalDateTime());
     submissions.save(submission);
 
     if (newStatus == TaskStatus.LATE_SUBMITTED) {
@@ -164,7 +164,8 @@ public class TaskService {
     Task task =
         tasks.findById(taskId).orElseThrow(() -> new NotFoundException("No task " + taskId));
     task.setStatus(TaskTransitions.complete(task.getStatus()));
-    task.setCompletedAt(OffsetDateTime.now().toLocalDateTime());
+    task.setCompletedAt(
+        OffsetDateTime.now().withOffsetSameInstant(Task.STORAGE_ZONE).toLocalDateTime());
     Task saved = tasks.save(task);
     record(principal, "task.completed", taskId, saved.getStatus().name());
     return saved;
@@ -173,7 +174,7 @@ public class TaskService {
   /** One employee's tasks, newest first. */
   @Transactional(readOnly = true)
   public List<Task> forEmployee(Long employeeId) {
-    return tasks.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
+    return tasks.findByEmployeeIdOrderByCreatedAtDescIdDesc(employeeId);
   }
 
   /**
@@ -197,7 +198,7 @@ public class TaskService {
       // A manager with no departments gets an empty dashboard rather than everyone's.
       return List.of();
     }
-    return tasks.findByDepartmentIdInOrderByCreatedAtDesc(scope);
+    return tasks.findByDepartmentIdInOrderByCreatedAtDescIdDesc(scope);
   }
 
   /**
@@ -210,7 +211,8 @@ public class TaskService {
    */
   @Transactional
   public int markOverdue() {
-    LocalDateTime now = OffsetDateTime.now().toLocalDateTime();
+    // Compared in the same UTC frame the deadlines were written in - see Task.STORAGE_ZONE.
+    LocalDateTime now = LocalDateTime.now(Task.STORAGE_ZONE);
     List<TaskStatus> open = List.of(TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS);
     List<Task> candidates = tasks.findOverdueCandidates(open, now);
 
@@ -228,9 +230,16 @@ public class TaskService {
     return candidates.size();
   }
 
+  /**
+   * The deadline as an absolute moment, or null for an open-ended task.
+   *
+   * <p>Reads back out of the UTC frame the column was written in. Reading it in the server's own
+   * zone would be the other half of the same bug: the write normalises, the read must too, or the
+   * two disagree by the server's offset from UTC.
+   */
   private OffsetDateTime deadlineOf(Task task) {
     LocalDateTime deadline = task.getDeadline();
-    return deadline == null ? null : deadline.atOffset(OffsetDateTime.now().getOffset());
+    return deadline == null ? null : deadline.atOffset(Task.STORAGE_ZONE);
   }
 
   /**

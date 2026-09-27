@@ -1,6 +1,7 @@
 package com.huvo.worklife.task.entity;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 import com.huvo.worklife.task.TaskStatus;
 
@@ -20,8 +21,8 @@ import lombok.NoArgsConstructor;
  * A unit of work (Huvo_Backend_Context.md Section 6.1).
  *
  * <p>{@code deadline} is nullable on purpose. An open-ended task has no deadline, and defaulting
- * one would make every such task inventably overdue â€” the sweep and the late-submission check
- * both treat null as "never late".
+ * one would make every such task inventably overdue ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the sweep and the
+ * late-submission check both treat null as "never late".
  */
 @Entity
 @Table(name = "task")
@@ -29,6 +30,15 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Task {
+
+  /**
+   * The single frame every task timestamp is stored and compared in.
+   *
+   * <p>The column is a naive {@code LocalDateTime} because MySQL's {@code DATETIME} carries no
+   * offset. That is only safe if every write and every comparison uses the same zone, so they all
+   * use this one.
+   */
+  public static final java.time.ZoneOffset STORAGE_ZONE = ZoneOffset.UTC;
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -74,6 +84,10 @@ public class Task {
   @Column(name = "created_at", nullable = false)
   private LocalDateTime createdAt;
 
+  /**
+   * @param deadline when the task is due, or null for an open-ended one. Stored as UTC.
+   * @param createdAt when it was assigned. Stored as UTC.
+   */
   public Task(
       String title,
       Long employeeId,
@@ -81,8 +95,14 @@ public class Task {
       java.time.OffsetDateTime createdAt) {
     this.title = title;
     this.employeeId = employeeId;
-    this.deadline = deadline == null ? null : deadline.toLocalDateTime();
-    this.createdAt = createdAt.toLocalDateTime();
+    // Normalised to UTC, not stored as the wall-clock time it arrived in. MySQL's DATETIME carries
+    // no offset, so a bare toLocalDateTime() would keep "17:00" from a +05:30 manager and the sweep
+    // would then compare it against a UTC now - marking the task overdue 5h30m early. Same class of
+    // bug as measuring attendance against UTC (Section 5.1), and the fix is the same: one absolute
+    // frame for writes and comparisons alike.
+    this.deadline =
+        deadline == null ? null : deadline.withOffsetSameInstant(STORAGE_ZONE).toLocalDateTime();
+    this.createdAt = createdAt.withOffsetSameInstant(STORAGE_ZONE).toLocalDateTime();
     this.status = TaskStatus.ASSIGNED;
   }
 }

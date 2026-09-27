@@ -33,8 +33,15 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
   List<Task> findOverdueCandidates(
       @Param("open") List<TaskStatus> open, @Param("now") LocalDateTime now);
 
-  /** An employee's tasks, newest first. */
-  List<Task> findByEmployeeIdOrderByCreatedAtDesc(Long employeeId);
+  /**
+   * An employee's tasks, newest first.
+   *
+   * <p>The id is a tiebreaker on purpose. Two tasks assigned in the same request burst share a
+   * microsecond {@code created_at}, and an ORDER BY with no tiebreaker leaves their relative order
+   * undefined - so the list could come back in a different order on two consecutive reads. The id
+   * is monotonic, so it makes "newest first" actually mean it.
+   */
+  List<Task> findByEmployeeIdOrderByCreatedAtDescIdDesc(Long employeeId);
 
   /**
    * A manager's team's tasks, grouped-ready for the dashboard (Section 6.2).
@@ -45,5 +52,5 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
    * @param departmentIds the manager's department scope
    * @return the tasks in those departments, newest first
    */
-  List<Task> findByDepartmentIdInOrderByCreatedAtDesc(List<String> departmentIds);
+  List<Task> findByDepartmentIdInOrderByCreatedAtDescIdDesc(List<String> departmentIds);
 }

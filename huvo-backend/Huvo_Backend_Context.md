@@ -264,6 +264,23 @@ Event envelope:
 ```
 Every consumer must be **idempotent** (dedupe on `eventId`) since RabbitMQ delivery is at-least-once.
 
+### 7.1 Publisher Contract Tests (Required)
+
+A new event publisher is **not done** until a test asserts the **actual serialized bytes on the wire** against the **real consumer's own parser** — not merely that its own payload type round-trips through an `ObjectMapper` in the producing service.
+
+The rule exists because the producer and the consumer almost never share a compile unit. They are separate Maven services with separate repositories, so a shared `huvo-event-contracts` record gives the *type* but not the *wire format* — the envelope wrapper, the JSON field names, and the date rendering are all chosen independently on each side and are invisible to both services' own tests. This has already caused two real defects, each of which compiled cleanly and passed every test in its own service:
+
+- **`employee.created`** — identity-service published a shape the consumer could not deserialise, so the event was silently dropped.
+- **`leave.approved`** — worklife-service sent a bare payload instead of wrapping it in the envelope above. `LeaveApprovedListener` reads `envelope.get("payload")` and drops the event when that is null, so *no employee was ever marked `ON_LEAVE`*. The payload object was correct at every level; only the bytes on the wire were wrong.
+
+Practically, a publisher test must:
+- capture what is handed to `RabbitTemplate.convertAndSend`, and assert on the **string**, not on a re-serialised copy of the payload;
+- assert the envelope wrapper is present, so a bare payload cannot pass;
+- mirror the consumer's parser **field for field** — the same `get(...)` names, the same types, the same date format — so a change to one side forces a change to the other. Where a consumer parses by hand with `JsonNode`, read its parser and copy its accessors rather than the sender's field names;
+- use an `ObjectMapper` configured like the application's (JSR-310 module registered, `WRITE_DATES_AS_TIMESTAMPS` disabled), since a bare `new ObjectMapper()` renders `LocalDate` as `[2026,9,28]` rather than `2026-09-28` and would assert a format production never sends.
+
+When the consumer does not exist yet, the publisher test asserts the envelope and the field names from the contract; it is **replaced**, not supplemented, once the consumer lands. This applies to every new publisher, including future services.
+
 ---
 
 ## 8. Environments — Local Development and AWS, Both Without Docker
