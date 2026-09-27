@@ -7,7 +7,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.Map;
 
@@ -30,7 +29,35 @@ class AuditRecorderTest {
 
   private final AuditClient auditClient = mock(AuditClient.class);
 
-  private final AuditRecorder recorder = new AuditRecorder(auditClient);
+  private final AuditRecorder recorder = recorderWith(auditClient);
+
+  /**
+   * Wraps a client the way Spring does now.
+   *
+   * <p>AuditRecorder takes an {@code ObjectProvider} because a {@code @Bean} returning null
+   * registers a {@code NullBean} that cannot be autowired - so a test that hands it a client
+   * directly would no longer be exercising the wiring the application actually uses.
+   */
+  private static AuditRecorder recorderWith(AuditClient client) {
+    org.springframework.beans.factory.ObjectProvider<AuditClient> provider =
+        new org.springframework.beans.factory.ObjectProvider<>() {
+          @Override
+          public AuditClient getObject(Object... args) {
+            return client;
+          }
+
+          @Override
+          public AuditClient getIfAvailable() {
+            return client;
+          }
+
+          @Override
+          public AuditClient getIfUnique() {
+            return client;
+          }
+        };
+    return new AuditRecorder(provider);
+  }
 
   @AfterEach
   void clearSecurityContext() {
@@ -107,7 +134,7 @@ class AuditRecorderTest {
   @Test
   void recordFailsOpenWhenAuditIsNotConfiguredAtAll() {
     // A build agent has no AWS credentials; CRUD must still work.
-    AuditRecorder unconfigured = new AuditRecorder(null);
+    AuditRecorder unconfigured = recorderWith(null);
 
     assertThatCode(() -> unconfigured.record("employee.created", "employee", "1", Map.of()))
         .doesNotThrowAnyException();
@@ -116,7 +143,7 @@ class AuditRecorderTest {
   @Test
   void recordRequiredFailsLoudlyWhenAuditIsNotConfiguredAtAll() {
     // Silently skipping a required audit would hide a deployment mistake.
-    AuditRecorder unconfigured = new AuditRecorder(null);
+    AuditRecorder unconfigured = recorderWith(null);
 
     assertThatThrownBy(
             () ->
@@ -128,10 +155,14 @@ class AuditRecorderTest {
 
   @Test
   void anUnconfiguredRecorderNeverTouchesTheClient() {
-    AuditRecorder unconfigured = new AuditRecorder(mock(AuditClient.class));
+    // Genuinely unconfigured this time: a null client resolved through the provider, which is what
+    // AuditConfig produces when no huvo.audit.table is set. The previous version of this test
+    // passed
+    // a mock here, so it exercised the configured path and asserted nothing about the unconfigured
+    // one - a test named for a branch that never ran.
+    AuditRecorder unconfigured = recorderWith(null);
 
     assertThatCode(() -> unconfigured.record("employee.created", "employee", "1", Map.of()))
         .doesNotThrowAnyException();
-    verifyNoInteractions(auditClient);
   }
 }

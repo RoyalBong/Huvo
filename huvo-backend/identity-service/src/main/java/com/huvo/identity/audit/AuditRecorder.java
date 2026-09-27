@@ -4,6 +4,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -49,11 +50,17 @@ public class AuditRecorder {
   private final AuditClient auditClient;
 
   /**
-   * @param auditClient the shared client, or null when auditing is not configured in this
-   *     environment (see {@link AuditConfig}) - a build agent has no AWS credentials
+   * @param auditClientProvider resolves to the shared client, or to nothing when auditing is not
+   *     configured in this environment (see {@link AuditConfig}) - a build agent has no AWS
+   *     credentials
+   *     <p>Taken as an {@code ObjectProvider} rather than a plain {@code AuditClient} because
+   *     {@code AuditConfig} returns null with no table configured, and a {@code @Bean} method that
+   *     returns null registers a {@code NullBean} which Spring will not autowire - so a direct
+   *     parameter makes the whole context fail to start under the documented default. Caught by
+   *     {@code ApplicationContextStartsTest}; see Huo_Backend_Context.md Section 9.1.
    */
-  public AuditRecorder(AuditClient auditClient) {
-    this.auditClient = auditClient;
+  public AuditRecorder(ObjectProvider<AuditClient> auditClientProvider) {
+    this.auditClient = auditClientProvider.getIfAvailable();
   }
 
   /**
