@@ -23,8 +23,12 @@ import com.huvo.events.EventTypes;
 @Configuration
 public class RabbitTopology {
 
-  /** This service publishes lateness outcomes here. */
-  public static final String ATTENDANCE_EXCHANGE = "attendance.exchange";
+  /**
+   * This service publishes lateness outcomes here. Aliased to the shared constant because
+   * notify-service binds a queue to the same exchange, and two spellings of one exchange name is
+   * how a binding silently stops matching.
+   */
+  public static final String ATTENDANCE_EXCHANGE = EventTypes.ATTENDANCE_EXCHANGE;
 
   /** This service's private queue on the identity exchange. */
   public static final String LOGIN_QUEUE = "attendance.login-consume";

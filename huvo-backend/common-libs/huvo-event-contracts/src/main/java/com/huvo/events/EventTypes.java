@@ -44,6 +44,15 @@ public final class EventTypes {
   public static final String IDENTITY_EXCHANGE = "identity.exchange";
 
   /**
+   * The exchange attendance-service publishes lateness outcomes on.
+   *
+   * <p>Lives here rather than only in attendance-service's own topology because notify-service
+   * binds a queue to it. An exchange name is wire format, and a name one service keeps to itself is
+   * a name the next consumer will retype - which is how a binding silently stops matching.
+   */
+  public static final String ATTENDANCE_EXCHANGE = "attendance.exchange";
+
+  /**
    * The fact that a login succeeded, for the attendance lateness engine (Section 5.2).
    *
    * <p>Ids and timestamps only. Never credentials, never a token: this crosses a broker that other
